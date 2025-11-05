@@ -7,6 +7,7 @@ import os
 import json
 import logging
 import requests
+import base64
 from datetime import datetime, date, timedelta
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -37,6 +38,13 @@ def initialize_firebase():
     try:
         # Try to get credentials from environment variable (JSON string)
         firebase_creds_json = os.environ.get('FIREBASE_CREDENTIALS_JSON')
+        
+        # If not found, try base64 encoded version
+        if not firebase_creds_json:
+            firebase_creds_b64 = os.environ.get('FIREBASE_CREDENTIALS_JSON_B64')
+            if firebase_creds_b64:
+                firebase_creds_json = base64.b64decode(firebase_creds_b64).decode('utf-8')
+                logger.info("✅ Decoded Firebase credentials from base64")
         
         if firebase_creds_json:
             # Parse JSON string
