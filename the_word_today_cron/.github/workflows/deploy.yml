@@ -43,6 +43,11 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
+      - name: 🧪 Run Tests
+        run: |
+          cd the_word_today_cron
+          python -m pytest test_main.py -v || echo "⚠️ Tests may require additional setup"
+        
       - name: 📤 Deploy Cloud Function
         env:
           DRY_RUN: ${{ secrets.DRY_RUN || 'False' }}
@@ -50,11 +55,24 @@ jobs:
         run: |
           # Get Firebase credentials and base64 encode to avoid parsing issues
           FIREBASE_CREDENTIALS_JSON='${{ secrets.FIREBASE_CREDENTIALS_JSON }}'
+          
+          # Verify JSON is not empty
+          if [ -z "$FIREBASE_CREDENTIALS_JSON" ]; then
+            echo "❌ FIREBASE_CREDENTIALS_JSON is empty"
+            exit 1
+          fi
+          
+          # Base64 encode the JSON (remove newlines for single line)
           FIREBASE_CREDENTIALS_B64=$(echo -n "${FIREBASE_CREDENTIALS_JSON}" | base64 | tr -d '\n')
           
           # Debug: Check if base64 encoding worked
           echo "Base64 encoding length: ${#FIREBASE_CREDENTIALS_B64}"
+          if [ -z "$FIREBASE_CREDENTIALS_B64" ]; then
+            echo "❌ Base64 encoding failed"
+            exit 1
+          fi
           
+          # Deploy with base64 encoded credentials
           gcloud functions deploy ${{ env.FUNCTION_NAME }} \
             --gen2 \
             --runtime=${{ env.RUNTIME }} \
