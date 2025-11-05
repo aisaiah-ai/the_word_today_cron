@@ -47,9 +47,9 @@ jobs:
         env:
           DRY_RUN: ${{ secrets.DRY_RUN || 'False' }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-          FIREBASE_CREDENTIALS_JSON: ${{ secrets.FIREBASE_CREDENTIALS_JSON }}
         run: |
-          # Base64 encode the JSON to avoid parsing issues
+          # Get Firebase credentials and base64 encode to avoid parsing issues
+          FIREBASE_CREDENTIALS_JSON='${{ secrets.FIREBASE_CREDENTIALS_JSON }}'
           FIREBASE_CREDENTIALS_B64=$(echo -n "${FIREBASE_CREDENTIALS_JSON}" | base64 | tr -d '\n')
           
           gcloud functions deploy ${{ env.FUNCTION_NAME }} \
