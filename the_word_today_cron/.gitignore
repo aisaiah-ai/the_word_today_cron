@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets and keys
+*.json
+!package.json
+serviceAccountKey.json
+gcp-sa-key.json
+key.json
+*-key.json
+
+# Local configuration
+.env
+.env.local
