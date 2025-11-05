@@ -50,7 +50,7 @@ jobs:
           FIREBASE_CREDENTIALS_JSON: ${{ secrets.FIREBASE_CREDENTIALS_JSON }}
         run: |
           # Base64 encode the JSON to avoid parsing issues
-          FIREBASE_CREDENTIALS_B64=$(echo -n "${FIREBASE_CREDENTIALS_JSON}" | base64 -w 0)
+          FIREBASE_CREDENTIALS_B64=$(echo -n "${FIREBASE_CREDENTIALS_JSON}" | base64 | tr -d '\n')
           
           gcloud functions deploy ${{ env.FUNCTION_NAME }} \
             --gen2 \
