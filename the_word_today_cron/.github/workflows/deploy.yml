@@ -44,6 +44,10 @@ jobs:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: 📤 Deploy Cloud Function
+        env:
+          DRY_RUN: ${{ secrets.DRY_RUN || 'False' }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          FIREBASE_CREDENTIALS_JSON: ${{ secrets.FIREBASE_CREDENTIALS_JSON }}
         run: |
           gcloud functions deploy ${{ env.FUNCTION_NAME }} \
             --gen2 \
@@ -56,7 +60,7 @@ jobs:
             --memory=512MB \
             --timeout=540s \
             --max-instances=10 \
-            --set-env-vars DRY_RUN=${{ secrets.DRY_RUN || 'False' }},YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }},FIREBASE_CREDENTIALS_JSON=${{ secrets.FIREBASE_CREDENTIALS_JSON }}
+            --set-env-vars DRY_RUN="${DRY_RUN}",YOUTUBE_API_KEY="${YOUTUBE_API_KEY}",FIREBASE_CREDENTIALS_JSON="${FIREBASE_CREDENTIALS_JSON}"
 
       - name: 🔗 Get Function URL
         id: get-url
