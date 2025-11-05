@@ -52,6 +52,9 @@ jobs:
           FIREBASE_CREDENTIALS_JSON='${{ secrets.FIREBASE_CREDENTIALS_JSON }}'
           FIREBASE_CREDENTIALS_B64=$(echo -n "${FIREBASE_CREDENTIALS_JSON}" | base64 | tr -d '\n')
           
+          # Debug: Check if base64 encoding worked
+          echo "Base64 encoding length: ${#FIREBASE_CREDENTIALS_B64}"
+          
           gcloud functions deploy ${{ env.FUNCTION_NAME }} \
             --gen2 \
             --runtime=${{ env.RUNTIME }} \
@@ -63,7 +66,7 @@ jobs:
             --memory=512MB \
             --timeout=540s \
             --max-instances=10 \
-            --set-env-vars DRY_RUN="${DRY_RUN}",YOUTUBE_API_KEY="${YOUTUBE_API_KEY}",FIREBASE_CREDENTIALS_JSON_B64="${FIREBASE_CREDENTIALS_B64}"
+            --set-env-vars "DRY_RUN=${DRY_RUN},YOUTUBE_API_KEY=${YOUTUBE_API_KEY},FIREBASE_CREDENTIALS_JSON_B64=${FIREBASE_CREDENTIALS_B64}"
 
       - name: 🔗 Get Function URL
         id: get-url
