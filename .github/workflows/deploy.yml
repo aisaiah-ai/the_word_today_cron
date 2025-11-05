@@ -44,7 +44,37 @@ jobs:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: 📤 Deploy Cloud Function
+        env:
+          DRY_RUN: ${{ secrets.DRY_RUN || 'False' }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: |
+          # Write Firebase credentials to a temporary file first to avoid shell parsing issues
+          # Use printf to preserve newlines correctly
+          printf '%s\n' '${{ secrets.FIREBASE_CREDENTIALS_JSON }}' > /tmp/firebase-creds.json
+          
+          # Verify file was created and contains valid JSON
+          if [ ! -s /tmp/firebase-creds.json ]; then
+            echo "❌ Firebase credentials file is empty"
+            exit 1
+          fi
+          
+          # Base64 encode the entire file content (handle both GNU and BSD base64)
+          FIREBASE_CREDENTIALS_B64=$(cat /tmp/firebase-creds.json | base64 -w 0 2>/dev/null || cat /tmp/firebase-creds.json | base64 | tr -d '\n')
+          
+          # Debug: Check if base64 encoding worked
+          echo "Base64 encoding length: ${#FIREBASE_CREDENTIALS_B64}"
+          if [ -z "$FIREBASE_CREDENTIALS_B64" ]; then
+            echo "❌ Base64 encoding failed"
+            exit 1
+          fi
+          
+          # Clean up the temporary file immediately
+          rm -f /tmp/firebase-creds.json
+          
+          # Export to GitHub Actions environment for debugging
+          echo "FIREBASE_CREDENTIALS_B64_LENGTH=${#FIREBASE_CREDENTIALS_B64}" >> $GITHUB_ENV
+          
+          # Deploy with base64 encoded credentials - use single quotes to prevent expansion
           gcloud functions deploy ${{ env.FUNCTION_NAME }} \
             --gen2 \
             --runtime=${{ env.RUNTIME }} \
@@ -56,7 +86,7 @@ jobs:
             --memory=512MB \
             --timeout=540s \
             --max-instances=10 \
-            --set-env-vars DRY_RUN=${{ secrets.DRY_RUN || 'False' }},YOUTUBE_API_KEY=${{ secrets.YOUTUBE_API_KEY }},FIREBASE_CREDENTIALS_JSON=${{ secrets.FIREBASE_CREDENTIALS_JSON }}
+            --set-env-vars "DRY_RUN=${DRY_RUN},YOUTUBE_API_KEY=${YOUTUBE_API_KEY},FIREBASE_CREDENTIALS_JSON_B64='${FIREBASE_CREDENTIALS_B64}'"
 
       - name: 🔗 Get Function URL
         id: get-url
