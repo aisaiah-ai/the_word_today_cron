@@ -53,17 +53,17 @@ jobs:
           DRY_RUN: ${{ secrets.DRY_RUN || 'False' }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: |
-          # Get Firebase credentials and base64 encode to avoid parsing issues
-          FIREBASE_CREDENTIALS_JSON='${{ secrets.FIREBASE_CREDENTIALS_JSON }}'
+          # Write Firebase credentials to a temporary file first to avoid shell parsing issues
+          echo '${{ secrets.FIREBASE_CREDENTIALS_JSON }}' > /tmp/firebase-creds.json
           
-          # Verify JSON is not empty
-          if [ -z "$FIREBASE_CREDENTIALS_JSON" ]; then
-            echo "❌ FIREBASE_CREDENTIALS_JSON is empty"
+          # Verify file was created and contains valid JSON
+          if [ ! -s /tmp/firebase-creds.json ]; then
+            echo "❌ Firebase credentials file is empty"
             exit 1
           fi
           
-          # Base64 encode the JSON (remove newlines for single line)
-          FIREBASE_CREDENTIALS_B64=$(echo -n "${FIREBASE_CREDENTIALS_JSON}" | base64 | tr -d '\n')
+          # Base64 encode the entire file content
+          FIREBASE_CREDENTIALS_B64=$(base64 -w 0 < /tmp/firebase-creds.json || base64 < /tmp/firebase-creds.json | tr -d '\n')
           
           # Debug: Check if base64 encoding worked
           echo "Base64 encoding length: ${#FIREBASE_CREDENTIALS_B64}"
@@ -71,6 +71,9 @@ jobs:
             echo "❌ Base64 encoding failed"
             exit 1
           fi
+          
+          # Clean up the temporary file
+          rm -f /tmp/firebase-creds.json
           
           # Deploy with base64 encoded credentials
           gcloud functions deploy ${{ env.FUNCTION_NAME }} \
