@@ -1,0 +1,127 @@
+name: Deploy Daily Readings Seeder
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'daily_readings_seeder/**'
+  workflow_dispatch:  # Allow manual triggers
+
+env:
+  FUNCTION_NAME: daily-readings-seeder
+  REGION: us-central1
+  RUNTIME: python311
+  ENTRY_POINT: seed_daily_readings_cron
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Install dependencies
+        run: |
+          cd daily_readings_seeder
+          pip install -r requirements.txt
+
+      - name: 🔐 Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: ⚙️ Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: 📤 Deploy Cloud Function
+        env:
+          DRY_RUN: ${{ secrets.DRY_RUN || 'False' }}
+        run: |
+          # Write Firebase credentials to a temporary file first to avoid shell parsing issues
+          printf '%s\n' '${{ secrets.FIREBASE_CREDENTIALS_JSON }}' > /tmp/firebase-creds.json
+          
+          # Verify file was created and contains valid JSON
+          if [ ! -s /tmp/firebase-creds.json ]; then
+            echo "❌ Firebase credentials file is empty"
+            exit 1
+          fi
+          
+          # Base64 encode the entire file content (handle both GNU and BSD base64)
+          FIREBASE_CREDENTIALS_B64=$(cat /tmp/firebase-creds.json | base64 -w 0 2>/dev/null || cat /tmp/firebase-creds.json | base64 | tr -d '\n')
+          
+          # Debug: Check if base64 encoding worked
+          echo "Base64 encoding length: ${#FIREBASE_CREDENTIALS_B64}"
+          if [ -z "$FIREBASE_CREDENTIALS_B64" ]; then
+            echo "❌ Base64 encoding failed"
+            exit 1
+          fi
+          
+          # Clean up the temporary file immediately
+          rm -f /tmp/firebase-creds.json
+          
+          # Deploy with base64 encoded credentials
+          gcloud functions deploy ${{ env.FUNCTION_NAME }} \
+            --gen2 \
+            --runtime=${{ env.RUNTIME }} \
+            --region=${{ env.REGION }} \
+            --source=daily_readings_seeder \
+            --entry-point=${{ env.ENTRY_POINT }} \
+            --trigger-http \
+            --allow-unauthenticated \
+            --memory=512MB \
+            --timeout=540s \
+            --max-instances=10 \
+            --set-env-vars "DRY_RUN=${DRY_RUN},FIREBASE_CREDENTIALS_JSON_B64='${FIREBASE_CREDENTIALS_B64}'"
+
+      - name: 🔗 Get Function URL
+        id: get-url
+        run: |
+          FUNCTION_URL=$(gcloud functions describe ${{ env.FUNCTION_NAME }} \
+            --gen2 \
+            --region=${{ env.REGION }} \
+            --format="value(serviceConfig.uri)")
+          echo "url=$FUNCTION_URL" >> $GITHUB_OUTPUT
+          echo "✅ Function URL: $FUNCTION_URL"
+
+      - name: ⏰ Create/Update Bi-Weekly Scheduler Job (1st and 15th of Month)
+        run: |
+          JOB_NAME="${FUNCTION_NAME}-biweekly"
+          # Run on 1st and 15th of each month at 2 AM ET (7 AM UTC)
+          gcloud scheduler jobs create http "$JOB_NAME" \
+            --location=${{ env.REGION }} \
+            --schedule="0 7 1,15 * *" \
+            --uri="${{ steps.get-url.outputs.url }}" \
+            --http-method=GET \
+            --time-zone="America/New_York" \
+            --description="Bi-weekly seeding of daily readings (1st and 15th of each month)" \
+            --attempt-deadline=600s \
+            || gcloud scheduler jobs update http "$JOB_NAME" \
+            --location=${{ env.REGION }} \
+            --schedule="0 7 1,15 * *" \
+            --uri="${{ steps.get-url.outputs.url }}" \
+            --http-method=GET \
+            --time-zone="America/New_York" \
+            --attempt-deadline=600s
+
+      - name: ✅ Verify Deployment
+        run: |
+          echo "🎉 Deployment completed successfully!"
+          echo "Function: ${{ env.FUNCTION_NAME }}"
+          echo "Region: ${{ env.REGION }}"
+          echo "URL: ${{ steps.get-url.outputs.url }}"
+          gcloud scheduler jobs list --location=${{ env.REGION }} \
+            --filter="name~${{ env.FUNCTION_NAME }}" \
+            --format="table(name,schedule,state)"
+
