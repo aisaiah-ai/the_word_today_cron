@@ -141,6 +141,12 @@ class TestVideoFetching(unittest.TestCase):
 class TestCloudFunction(unittest.TestCase):
     """Test the Cloud Function entry point"""
     
+    def setUp(self):
+        """Reset module state before each test"""
+        import main
+        main._firebase_initialized = False
+        main._db = None
+    
     @patch('main.initialize_firebase')
     @patch('main.fetch_video_for_date')
     @patch('main.fetch_cfc_video_for_date')
@@ -151,6 +157,10 @@ class TestCloudFunction(unittest.TestCase):
         mock_request = Mock()
         mock_request.method = 'GET'
         
+        # Mock Firebase to return a mock database
+        mock_db = MagicMock()
+        mock_fb.return_value = mock_db
+        
         mock_twt.return_value = {'url': 'https://youtube.com/watch?v=test1', 'date': '2025-11-05', 'title': 'Test'}
         mock_cfc.return_value = {'url': 'https://youtube.com/watch?v=test2', 'date': '2025-11-05', 'title': 'Test'}
         mock_bo.return_value = {'url': 'https://youtube.com/watch?v=test3', 'title': 'Test'}
@@ -159,7 +169,6 @@ class TestCloudFunction(unittest.TestCase):
             'YOUTUBE_API_KEY': 'test-key',
             'DRY_RUN': 'False'
         }):
-            # Reload the module to pick up the environment variable
             import importlib
             import main
             importlib.reload(main)
@@ -169,14 +178,12 @@ class TestCloudFunction(unittest.TestCase):
             self.assertEqual(response['statusCode'], 200)
             self.assertEqual(response['body']['status'], 'success')
     
-    @patch('main.initialize_firebase')
-    def test_the_word_today_cron_missing_api_key(self, mock_fb):
+    def test_the_word_today_cron_missing_api_key(self):
         """Test cron execution with missing API key"""
         mock_request = Mock()
         mock_request.method = 'GET'
         
         with patch.dict(os.environ, {'YOUTUBE_API_KEY': ''}, clear=False):
-            # Reload the module to pick up the empty environment variable
             import importlib
             import main
             importlib.reload(main)
@@ -195,6 +202,10 @@ class TestCloudFunction(unittest.TestCase):
         mock_request = Mock()
         mock_request.method = 'GET'
         
+        # Mock Firebase to return a mock database
+        mock_db = MagicMock()
+        mock_fb.return_value = mock_db
+        
         mock_fetch.return_value = {'url': 'https://youtube.com/watch?v=test', 'date': '2025-11-05', 'title': 'Test'}
         mock_cfc.return_value = {'url': 'https://youtube.com/watch?v=test2', 'date': '2025-11-05', 'title': 'Test'}
         mock_bo.return_value = {'url': 'https://youtube.com/watch?v=test3', 'title': 'Test'}
@@ -203,7 +214,6 @@ class TestCloudFunction(unittest.TestCase):
             'YOUTUBE_API_KEY': 'test-key',
             'DRY_RUN': 'True'
         }):
-            # Reload the module to pick up the environment variable
             import importlib
             import main
             importlib.reload(main)
