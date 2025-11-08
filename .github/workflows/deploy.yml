@@ -124,20 +124,20 @@ jobs:
             --time-zone="America/New_York" \
             --attempt-deadline=600s
 
-      - name: ⏰ Create/Update 9 AM ET (14:00 UTC) Scheduler Job
+      - name: ⏰ Create/Update 6 AM ET (11:00 UTC) Scheduler Job
         run: |
-          JOB_NAME="${FUNCTION_NAME}-9am-et"
+          JOB_NAME="${FUNCTION_NAME}-6am-et"
           gcloud scheduler jobs create http "$JOB_NAME" \
             --location=${{ env.REGION }} \
-            --schedule="0 14 * * *" \
+            --schedule="0 11 * * *" \
             --uri="${{ steps.get-url.outputs.url }}" \
             --http-method=GET \
             --time-zone="America/New_York" \
-            --description="Daily run at 9 AM ET (14:00 UTC) for The Word Today service" \
+            --description="Daily run at 6 AM ET (11:00 UTC) for The Word Today service" \
             --attempt-deadline=600s \
             || gcloud scheduler jobs update http "$JOB_NAME" \
             --location=${{ env.REGION }} \
-            --schedule="0 14 * * *" \
+            --schedule="0 11 * * *" \
             --uri="${{ steps.get-url.outputs.url }}" \
             --http-method=GET \
             --time-zone="America/New_York" \
