@@ -1,0 +1,9 @@
+# Copy this file to terraform.tfvars and fill in your values
+
+project_id = "your-gcp-project-id"
+region     = "us-central1"
+
+# Optional: Override defaults
+# service_account_name = "github-actions-deploy"
+# function_name        = "the-word-today-cron"
+

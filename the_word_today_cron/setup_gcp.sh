@@ -51,6 +51,9 @@ echo -e "${GREEN}🔌 Enabling required APIs...${NC}"
 gcloud services enable cloudfunctions.googleapis.com
 echo "✅ Cloud Functions API enabled"
 
+gcloud services enable run.googleapis.com
+echo "✅ Cloud Run API enabled (required for Gen2 functions)"
+
 gcloud services enable cloudscheduler.googleapis.com
 echo "✅ Cloud Scheduler API enabled"
 
@@ -59,6 +62,9 @@ echo "✅ Cloud Build API enabled"
 
 gcloud services enable logging.googleapis.com
 echo "✅ Cloud Logging API enabled"
+
+gcloud services enable artifactregistry.googleapis.com
+echo "✅ Artifact Registry API enabled (for function images)"
 
 gcloud services enable secretmanager.googleapis.com
 echo "✅ Secret Manager API enabled (optional, for Firebase credentials)"
@@ -106,6 +112,16 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="roles/storage.admin" \
+    --condition=None
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${SA_EMAIL}" \
+    --role="roles/run.admin" \
+    --condition=None
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${SA_EMAIL}" \
+    --role="roles/artifactregistry.writer" \
     --condition=None
 
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
