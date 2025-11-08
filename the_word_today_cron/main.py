@@ -30,7 +30,10 @@ _db_secondary = None
 
 
 def _get_firebase_credentials(env_var_json, env_var_b64, env_var_path, app_name='default'):
-    """Helper function to get Firebase credentials from various sources"""
+    """
+    Helper function to get Firebase credentials from various sources.
+    Returns credentials object or None if not found.
+    """
     # Try to get credentials from environment variable (JSON string)
     firebase_creds_json = os.environ.get(env_var_json)
     
@@ -47,18 +50,16 @@ def _get_firebase_credentials(env_var_json, env_var_b64, env_var_path, app_name=
         cred = credentials.Certificate(cred_dict)
         logger.info(f"✅ Initialized Firebase {app_name} from {env_var_json}")
         return cred
-    else:
-        # Try to get from file path (for local development)
-        firebase_cred_path = os.environ.get(env_var_path)
-        if firebase_cred_path and os.path.exists(firebase_cred_path):
-            cred = credentials.Certificate(firebase_cred_path)
-            logger.info(f"✅ Initialized Firebase {app_name} from file: {firebase_cred_path}")
-            return cred
-        else:
-            # Use Application Default Credentials (for Cloud Functions)
-            cred = credentials.ApplicationDefault()
-            logger.info(f"✅ Initialized Firebase {app_name} using Application Default Credentials")
-            return cred
+    
+    # Try to get from file path (for local development)
+    firebase_cred_path = os.environ.get(env_var_path)
+    if firebase_cred_path and os.path.exists(firebase_cred_path):
+        cred = credentials.Certificate(firebase_cred_path)
+        logger.info(f"✅ Initialized Firebase {app_name} from file: {firebase_cred_path}")
+        return cred
+    
+    # No credentials found - return None (caller will handle Application Default Credentials)
+    return None
 
 
 def initialize_firebase(project='primary'):
@@ -105,17 +106,16 @@ def initialize_firebase(project='primary'):
         
         try:
             # Try to get credentials from environment variables first
-            cred = None
-            try:
-                cred = _get_firebase_credentials(
-                    'FIREBASE_CREDENTIALS_JSON_SECONDARY',
-                    'FIREBASE_CREDENTIALS_JSON_B64_SECONDARY',
-                    'FIREBASE_CRED_SECONDARY',
-                    'secondary'
-                )
-            except Exception as e:
-                # If no credentials provided, try Application Default Credentials
-                logger.info("ℹ️ No secondary Firebase credentials found, trying Application Default Credentials")
+            cred = _get_firebase_credentials(
+                'FIREBASE_CREDENTIALS_JSON_SECONDARY',
+                'FIREBASE_CREDENTIALS_JSON_B64_SECONDARY',
+                'FIREBASE_CRED_SECONDARY',
+                'secondary'
+            )
+            
+            # If no credentials provided, use Application Default Credentials
+            if cred is None:
+                logger.info("ℹ️ No secondary Firebase credentials found, using Application Default Credentials")
                 cred = credentials.ApplicationDefault()
             
             # Initialize secondary Firebase app
