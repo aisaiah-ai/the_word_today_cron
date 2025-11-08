@@ -147,23 +147,18 @@ class TestCloudFunction(unittest.TestCase):
         main._firebase_initialized = False
         main._db = None
     
-    @patch('main.initialize_firebase')
-    @patch('main.fetch_video_for_date')
-    @patch('main.fetch_cfc_video_for_date')
-    @patch('main.fetch_bo_video_for_date')
-    @patch('main.save_to_firestore')
-    def test_the_word_today_cron_success(self, mock_save, mock_bo, mock_cfc, mock_twt, mock_fb):
+    def test_the_word_today_cron_success(self):
         """Test successful cron execution"""
         mock_request = Mock()
         mock_request.method = 'GET'
         
         # Mock Firebase to return a mock database
         mock_db = MagicMock()
-        mock_fb.return_value = mock_db
         
-        mock_twt.return_value = {'url': 'https://youtube.com/watch?v=test1', 'date': '2025-11-05', 'title': 'Test'}
-        mock_cfc.return_value = {'url': 'https://youtube.com/watch?v=test2', 'date': '2025-11-05', 'title': 'Test'}
-        mock_bo.return_value = {'url': 'https://youtube.com/watch?v=test3', 'title': 'Test'}
+        mock_twt = MagicMock(return_value={'url': 'https://youtube.com/watch?v=test1', 'date': '2025-11-05', 'title': 'Test'})
+        mock_cfc = MagicMock(return_value={'url': 'https://youtube.com/watch?v=test2', 'date': '2025-11-05', 'title': 'Test'})
+        mock_bo = MagicMock(return_value={'url': 'https://youtube.com/watch?v=test3', 'title': 'Test'})
+        mock_save = MagicMock()
         
         with patch.dict(os.environ, {
             'YOUTUBE_API_KEY': 'test-key',
@@ -171,8 +166,19 @@ class TestCloudFunction(unittest.TestCase):
         }):
             import importlib
             import main
+            # Reset module state
+            main._firebase_initialized = False
+            main._db = None
+            # Reload to pick up environment variables
             importlib.reload(main)
-            response, status_code = main.the_word_today_cron(mock_request)
+            
+            # Patch AFTER reload to ensure patches work on the reloaded module
+            with patch.object(main, 'initialize_firebase', return_value=mock_db), \
+                 patch.object(main, 'fetch_video_for_date', mock_twt), \
+                 patch.object(main, 'fetch_cfc_video_for_date', mock_cfc), \
+                 patch.object(main, 'fetch_bo_video_for_date', mock_bo), \
+                 patch.object(main, 'save_to_firestore', mock_save):
+                response, status_code = main.the_word_today_cron(mock_request)
             
             self.assertEqual(status_code, 200)
             self.assertEqual(response['statusCode'], 200)
@@ -192,23 +198,18 @@ class TestCloudFunction(unittest.TestCase):
             self.assertEqual(status_code, 500)
             self.assertEqual(response['body']['status'], 'error')
     
-    @patch('main.initialize_firebase')
-    @patch('main.fetch_video_for_date')
-    @patch('main.fetch_cfc_video_for_date')
-    @patch('main.fetch_bo_video_for_date')
-    @patch('main.save_to_firestore')
-    def test_dry_run_mode(self, mock_save, mock_bo, mock_cfc, mock_fetch, mock_fb):
+    def test_dry_run_mode(self):
         """Test that dry run mode doesn't save to Firestore"""
         mock_request = Mock()
         mock_request.method = 'GET'
         
         # Mock Firebase to return a mock database
         mock_db = MagicMock()
-        mock_fb.return_value = mock_db
         
-        mock_fetch.return_value = {'url': 'https://youtube.com/watch?v=test', 'date': '2025-11-05', 'title': 'Test'}
-        mock_cfc.return_value = {'url': 'https://youtube.com/watch?v=test2', 'date': '2025-11-05', 'title': 'Test'}
-        mock_bo.return_value = {'url': 'https://youtube.com/watch?v=test3', 'title': 'Test'}
+        mock_fetch = MagicMock(return_value={'url': 'https://youtube.com/watch?v=test', 'date': '2025-11-05', 'title': 'Test'})
+        mock_cfc = MagicMock(return_value={'url': 'https://youtube.com/watch?v=test2', 'date': '2025-11-05', 'title': 'Test'})
+        mock_bo = MagicMock(return_value={'url': 'https://youtube.com/watch?v=test3', 'title': 'Test'})
+        mock_save = MagicMock()
         
         with patch.dict(os.environ, {
             'YOUTUBE_API_KEY': 'test-key',
@@ -216,8 +217,19 @@ class TestCloudFunction(unittest.TestCase):
         }):
             import importlib
             import main
+            # Reset module state
+            main._firebase_initialized = False
+            main._db = None
+            # Reload to pick up environment variables
             importlib.reload(main)
-            response, status_code = main.the_word_today_cron(mock_request)
+            
+            # Patch AFTER reload to ensure patches work on the reloaded module
+            with patch.object(main, 'initialize_firebase', return_value=mock_db), \
+                 patch.object(main, 'fetch_video_for_date', mock_fetch), \
+                 patch.object(main, 'fetch_cfc_video_for_date', mock_cfc), \
+                 patch.object(main, 'fetch_bo_video_for_date', mock_bo), \
+                 patch.object(main, 'save_to_firestore', mock_save):
+                response, status_code = main.the_word_today_cron(mock_request)
             
             # In dry run, save_to_firestore should be called but with dry_run=True
             # The function should still complete successfully
