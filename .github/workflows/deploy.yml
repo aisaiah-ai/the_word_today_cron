@@ -81,6 +81,24 @@ jobs:
           # Export to GitHub Actions environment for debugging
           echo "FIREBASE_CREDENTIALS_B64_LENGTH=${#FIREBASE_CREDENTIALS_B64}" >> $GITHUB_ENV
           
+          # Process secondary Firebase credentials if provided (optional)
+          ENV_VARS="DRY_RUN=${DRY_RUN},YOUTUBE_API_KEY=${YOUTUBE_API_KEY},FIREBASE_CREDENTIALS_JSON_B64=${FIREBASE_CREDENTIALS_B64}"
+          
+          if [ -n "${{ secrets.FIREBASE_CREDENTIALS_JSON_SECONDARY }}" ]; then
+            echo "✅ Secondary Firebase credentials detected - will write to both projects"
+            printf '%s\n' '${{ secrets.FIREBASE_CREDENTIALS_JSON_SECONDARY }}' > /tmp/firebase-creds-secondary.json
+            
+            if [ -s /tmp/firebase-creds-secondary.json ]; then
+              FIREBASE_CREDENTIALS_B64_SECONDARY=$(cat /tmp/firebase-creds-secondary.json | base64 -w 0 2>/dev/null || cat /tmp/firebase-creds-secondary.json | base64 | tr -d '\n')
+              ENV_VARS="${ENV_VARS},FIREBASE_CREDENTIALS_JSON_B64_SECONDARY=${FIREBASE_CREDENTIALS_B64_SECONDARY}"
+              rm -f /tmp/firebase-creds-secondary.json
+            else
+              echo "⚠️ Secondary Firebase credentials file is empty, skipping"
+            fi
+          else
+            echo "ℹ️ No secondary Firebase credentials provided - will only write to primary project"
+          fi
+          
           # Deploy with base64 encoded credentials - properly escape the base64 value
           gcloud functions deploy ${{ env.FUNCTION_NAME }} \
             --gen2 \
@@ -93,7 +111,7 @@ jobs:
             --memory=512MB \
             --timeout=540s \
             --max-instances=10 \
-            --set-env-vars "DRY_RUN=${DRY_RUN},YOUTUBE_API_KEY=${YOUTUBE_API_KEY},FIREBASE_CREDENTIALS_JSON_B64=${FIREBASE_CREDENTIALS_B64}"
+            --set-env-vars "${ENV_VARS}"
 
       - name: 🔗 Get Function URL
         id: get-url
