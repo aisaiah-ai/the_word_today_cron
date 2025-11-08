@@ -9,30 +9,6 @@ terraform {
   }
 }
 
-# Variables
-variable "project_id" {
-  description = "GCP Project ID"
-  type        = string
-}
-
-variable "region" {
-  description = "GCP Region"
-  type        = string
-  default     = "us-central1"
-}
-
-variable "service_account_name" {
-  description = "Name of the service account for GitHub Actions"
-  type        = string
-  default     = "github-actions-deploy"
-}
-
-variable "function_name" {
-  description = "Cloud Function name"
-  type        = string
-  default     = "the-word-today-cron"
-}
-
 # Enable required APIs
 resource "google_project_service" "required_apis" {
   for_each = toset([
@@ -112,26 +88,5 @@ resource "google_artifact_registry_repository" "function_images" {
   repository_id = "cloud-functions"
   description   = "Repository for Cloud Function container images"
   format        = "DOCKER"
-}
-
-# Outputs
-output "service_account_email" {
-  description = "Email of the service account"
-  value       = google_service_account.github_actions.email
-}
-
-output "service_account_id" {
-  description = "ID of the service account"
-  value       = google_service_account.github_actions.id
-}
-
-output "artifact_registry_repository" {
-  description = "Artifact Registry repository URL"
-  value       = google_artifact_registry_repository.function_images.name
-}
-
-output "enabled_apis" {
-  description = "List of enabled APIs"
-  value       = keys(google_project_service.required_apis)
 }
 
