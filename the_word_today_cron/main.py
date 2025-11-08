@@ -134,7 +134,25 @@ def fetch_video_for_date(target_date: date):
 
 def fetch_cfc_video_for_date(target_date: date):
     """Fetch CFC Only By Grace Reflections video for a specific date"""
-    date_str = target_date.strftime("%d %B %Y")  # e.g. "01 October 2025"
+    # Try multiple date formats that might appear in video titles
+    day_no_zero = str(target_date.day)  # Without leading zero
+    day_with_zero = target_date.strftime("%d")  # With leading zero
+    month_name = target_date.strftime("%B")
+    month_num = str(target_date.month)
+    month_num_zero = target_date.strftime("%m")
+    year = str(target_date.year)
+    
+    date_formats = [
+        target_date.strftime("%d %B %Y"),  # e.g. "01 October 2025"
+        f"{day_no_zero} {month_name} {year}",  # e.g. "1 October 2025" (no leading zero)
+        target_date.strftime("%B %d, %Y"),  # e.g. "October 01, 2025"
+        f"{month_name} {day_no_zero}, {year}",  # e.g. "October 1, 2025" (no leading zero)
+        target_date.strftime("%d/%m/%Y"),  # e.g. "01/10/2025"
+        f"{day_no_zero}/{month_num}/{year}",  # e.g. "1/10/2025"
+    ]
+    
+    # Primary search query using the first format
+    date_str = date_formats[0]
     query = f"{date_str} - Only By Grace Reflections"
     encoded_query = requests.utils.quote(query)
     
@@ -143,7 +161,7 @@ def fetch_cfc_video_for_date(target_date: date):
         f"&channelId={CFC_CHANNEL_ID}"
         f"&q={encoded_query}"
         f"&key={YOUTUBE_API_KEY}"
-        f"&maxResults=5&type=video&order=date"
+        f"&maxResults=10&type=video&order=date"
     )
     
     logger.info(f"🔎 Fetching CFC Only By Grace video for {date_str}")
@@ -153,18 +171,97 @@ def fetch_cfc_video_for_date(target_date: date):
         response.raise_for_status()
         data = response.json()
         
-        if "items" not in data or not data["items"]:
-            return None
+        video_found = False
         
-        for item in data["items"]:
-            title = item["snippet"]["title"]
-            if date_str in title and "Only By Grace Reflections" in title:
-                video_id = item["id"]["videoId"]
-                return {
-                    "date": date_str,
-                    "title": title,
-                    "url": f"https://www.youtube.com/watch?v={video_id}"
-                }
+        if "items" in data and data["items"]:
+            # Log all found titles for debugging
+            logger.info(f"📋 Found {len(data['items'])} video(s) in search results:")
+            for item in data["items"]:
+                title = item["snippet"]["title"]
+                logger.info(f"   - {title}")
+            
+            # Try to match with any of the date formats
+            for item in data["items"]:
+                title = item["snippet"]["title"]
+                # Check if "Only By Grace Reflections" is in the title
+                if "Only By Grace Reflections" in title:
+                    # Check if any date format matches
+                    date_matched = False
+                    for fmt in date_formats:
+                        if fmt in title:
+                            date_matched = True
+                            logger.info(f"✅ Matched video with date format: {fmt}")
+                            break
+                    
+                    # If no exact date match, check if title contains the date components
+                    if not date_matched:
+                        # Try matching date components separately as fallback
+                        if month_name in title and year in title:
+                            logger.info(f"✅ Matched video by date components (month: {month_name}, year: {year})")
+                            date_matched = True
+                    
+                    if date_matched:
+                        video_id = item["id"]["videoId"]
+                        logger.info(f"✅ Found matching CFC video: {title}")
+                        video_found = {
+                            "date": date_str,
+                            "title": title,
+                            "url": f"https://www.youtube.com/watch?v={video_id}"
+                        }
+                        break
+        else:
+            logger.warning(f"⚠️ No search results returned for CFC video query")
+        
+        if video_found:
+            return video_found
+        
+        logger.warning(f"⚠️ No CFC video found matching date formats and 'Only By Grace Reflections'")
+        logger.info(f"🔄 Trying fallback search with broader query...")
+        
+        # Fallback: Try searching without date in query, but filter by date in results
+        fallback_query = "Only By Grace Reflections"
+        encoded_query = requests.utils.quote(fallback_query)
+        fallback_url = (
+            f"{BASE_URL}?part=snippet"
+            f"&channelId={CFC_CHANNEL_ID}"
+            f"&q={encoded_query}"
+            f"&key={YOUTUBE_API_KEY}"
+            f"&maxResults=20&type=video&order=date"
+        )
+        
+        fallback_response = requests.get(fallback_url, timeout=30)
+        fallback_response.raise_for_status()
+        fallback_data = fallback_response.json()
+        
+        if "items" in fallback_data and fallback_data["items"]:
+            logger.info(f"📋 Fallback search found {len(fallback_data['items'])} video(s):")
+            for item in fallback_data["items"]:
+                title = item["snippet"]["title"]
+                logger.info(f"   - {title}")
+                
+                # Check if "Only By Grace Reflections" is in the title
+                if "Only By Grace Reflections" in title:
+                    # Try matching with any date format
+                    for fmt in date_formats:
+                        if fmt in title:
+                            video_id = item["id"]["videoId"]
+                            logger.info(f"✅ Found matching CFC video via fallback search: {title}")
+                            return {
+                                "date": date_str,
+                                "title": title,
+                                "url": f"https://www.youtube.com/watch?v={video_id}"
+                            }
+                    
+                    # Try matching by date components
+                    if month_name in title and year in title:
+                        video_id = item["id"]["videoId"]
+                        logger.info(f"✅ Found matching CFC video via fallback search (by components): {title}")
+                        return {
+                            "date": date_str,
+                            "title": title,
+                            "url": f"https://www.youtube.com/watch?v={video_id}"
+                        }
+        
     except Exception as e:
         logger.error(f"❌ Error fetching CFC video: {str(e)}")
     

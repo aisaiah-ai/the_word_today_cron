@@ -33,6 +33,13 @@ jobs:
           cd the_word_today_cron
           pip install -r requirements.txt
 
+      - name: 🧪 Run unit tests
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY || 'test-key' }}
+        run: |
+          cd the_word_today_cron
+          python -m pytest test_main.py -v || python -m unittest test_main.py -v
+
       - name: 🔐 Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -74,7 +81,7 @@ jobs:
           # Export to GitHub Actions environment for debugging
           echo "FIREBASE_CREDENTIALS_B64_LENGTH=${#FIREBASE_CREDENTIALS_B64}" >> $GITHUB_ENV
           
-          # Deploy with base64 encoded credentials - use single quotes to prevent expansion
+          # Deploy with base64 encoded credentials - properly escape the base64 value
           gcloud functions deploy ${{ env.FUNCTION_NAME }} \
             --gen2 \
             --runtime=${{ env.RUNTIME }} \
@@ -86,7 +93,7 @@ jobs:
             --memory=512MB \
             --timeout=540s \
             --max-instances=10 \
-            --set-env-vars "DRY_RUN=${DRY_RUN},YOUTUBE_API_KEY=${YOUTUBE_API_KEY},FIREBASE_CREDENTIALS_JSON_B64='${FIREBASE_CREDENTIALS_B64}'"
+            --set-env-vars "DRY_RUN=${DRY_RUN},YOUTUBE_API_KEY=${YOUTUBE_API_KEY},FIREBASE_CREDENTIALS_JSON_B64=${FIREBASE_CREDENTIALS_B64}"
 
       - name: 🔗 Get Function URL
         id: get-url
