@@ -207,11 +207,13 @@ def fetch_usccb_reading_data(target_date: date) -> Optional[Dict]:
             if ref_link:
                 reference = ref_link.get_text().strip()
                 
-                # Match to the appropriate section
-                if 'Reading 1' in section_name or 'First Reading' in section_name:
+                # Match to the appropriate section (case-insensitive, flexible matching)
+                section_lower = section_name.lower().strip()
+                
+                if 'reading 1' in section_lower or 'first reading' in section_lower or section_lower == 'reading i':
                     result['reading1']['reference'] = reference
                     logger.info(f"✅ Found Reading 1: {reference}")
-                elif 'Responsorial Psalm' in section_name:
+                elif 'responsorial psalm' in section_lower or section_lower == 'responsorial psalm':
                     result['responsorialPsalm']['reference'] = reference
                     logger.info(f"✅ Found Responsorial Psalm: {reference}")
                     
@@ -228,10 +230,10 @@ def fetch_usccb_reading_data(target_date: date) -> Optional[Dict]:
                             result['responsorialPsalm']['response'] = response
                             logger.info(f"✅ Found Psalm Response: {response}")
                     
-                elif 'Gospel' in section_name:
+                elif 'gospel' in section_lower:
                     result['gospel']['reference'] = reference
                     logger.info(f"✅ Found Gospel: {reference}")
-                elif 'Reading 2' in section_name or 'Second Reading' in section_name:
+                elif 'reading 2' in section_lower or 'second reading' in section_lower or section_lower == 'reading ii':
                     # Add reading2 if present
                     result['reading2'] = {'title': 'Reading 2', 'reference': reference}
                     logger.info(f"✅ Found Reading 2: {reference}")
