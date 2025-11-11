@@ -426,8 +426,9 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
     psalm_text = fetch_public_scripture_text(psalm_ref)
     
     if not psalm_text:
-        logger.warning(f"⚠️  Could not fetch text for {psalm_ref}")
-        return {'status': 'skipped', 'doc_id': doc_id, 'reason': 'no_text_fetched'}
+        logger.warning(f"⚠️  Could not fetch text for {psalm_ref} - may be Deuterocanonical or unsupported format")
+        # Skip gracefully - responsorial psalm text not available from public domain API
+        return {'status': 'skipped', 'doc_id': doc_id, 'reason': f'Could not fetch text for {psalm_ref}'}
     
     # Prepare update data - ONLY responsorial psalm fields
     update_data = {
