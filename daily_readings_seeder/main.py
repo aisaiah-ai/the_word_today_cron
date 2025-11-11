@@ -13,6 +13,7 @@ from datetime import datetime, date, timedelta
 from typing import Dict, Optional, List
 import firebase_admin
 from firebase_admin import credentials, firestore
+from bs4 import BeautifulSoup
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -147,12 +148,7 @@ def fetch_usccb_reading_data(target_date: date) -> Optional[Dict]:
     """
     Fetch USCCB reading references (NOT full text due to licensing)
     Returns structured data with references only
-    
-    Note: This is a placeholder implementation. In production, you would:
-    1. Fetch the USCCB HTML page
-    2. Parse HTML using BeautifulSoup to extract references
-    3. Extract reading titles and Bible references
-    4. Return structured data without full text content
+    Parses HTML to extract actual Bible references
     """
     url = generate_usccb_url(target_date)
     logger.info(f"🔎 Fetching USCCB reading data from {url}")
@@ -163,36 +159,97 @@ def fetch_usccb_reading_data(target_date: date) -> Optional[Dict]:
         })
         response.raise_for_status()
         
-        # TODO: Parse HTML to extract references
-        # For now, log that parsing is needed
-        # In production, use BeautifulSoup to parse HTML structure:
-        # from bs4 import BeautifulSoup
-        # soup = BeautifulSoup(response.text, 'html.parser')
-        # reading1_ref = extract_reference_from_html(soup, 'reading1')
-        # etc.
+        # Parse HTML to extract references
+        soup = BeautifulSoup(response.text, 'html.parser')
         
-        logger.warning("⚠️  USCCB HTML parsing not yet implemented - using placeholder")
-        
-        # Placeholder structure - actual implementation would parse HTML
-        return {
+        # Initialize result structure
+        result = {
             'title': f"Readings for {target_date.strftime('%A, %B %d, %Y')}",
             'url': url,
-            'reading1': {
-                'id': f"{int(target_date.strftime('%Y%m%d'))}-reading1",
-                'title': 'Reading 1',
-                'reference': 'TBD'  # Would be parsed from HTML
-            },
-            'responsorialPsalm': {
-                'id': f"{int(target_date.strftime('%Y%m%d'))}-psalm",
-                'title': 'Responsorial Psalm',
-                'reference': 'TBD'  # Would be parsed from HTML
-            },
-            'gospel': {
-                'id': f"{int(target_date.strftime('%Y%m%d'))}-gospel",
-                'title': 'Gospel',
-                'reference': 'TBD'  # Would be parsed from HTML
-            }
+            'reading1': {'title': 'Reading 1', 'reference': ''},
+            'responsorialPsalm': {'title': 'Responsorial Psalm', 'reference': ''},
+            'gospel': {'title': 'Gospel', 'reference': ''}
         }
+        
+        # USCCB page structure: Look for reading references in various formats
+        # Common patterns: "Reading 1", "Responsorial Psalm", "Gospel"
+        # References are usually in <p> tags or <div> tags with class names
+        
+        # Try to find reading references in the HTML
+        # Look for common patterns like "Rom 9:1-5" or "Luke 14:1-6"
+        bible_ref_pattern = r'\b([1-3]?\s*(?:[A-Z][a-z]+|Cor|Thess|Tim|Jn|Jn|Mk|Mt|Lk|Ps|Rom|Heb|Gal|Eph|Phil|Col|Jas|Pet|Rev|Gen|Ex|Lev|Num|Deut|Josh|Judg|Ruth|Sam|Kgs|Chr|Ezra|Neh|Esth|Job|Prov|Eccl|Song|Is|Jer|Lam|Ezek|Dan|Hos|Joel|Amos|Obad|Jonah|Mic|Nah|Hab|Zeph|Hag|Zech|Mal))\s+\d+:\d+(?:-\d+)?(?:\s*,\s*\d+)?(?:\s*-\s*\d+[a-z]*)?'
+        
+        # Find all potential Bible references in the page
+        page_text = soup.get_text()
+        all_refs = re.findall(bible_ref_pattern, page_text, re.IGNORECASE)
+        
+        # Look for specific sections
+        # Reading 1 is usually first, Responsorial Psalm second, Gospel last
+        
+        # Try to find reading sections by looking for headings
+        reading1_ref = ''
+        psalm_ref = ''
+        gospel_ref = ''
+        
+        # Look for "Reading 1" or "First Reading" section
+        reading1_section = soup.find(string=re.compile(r'Reading\s+1|First\s+Reading', re.I))
+        if reading1_section:
+            parent = reading1_section.find_parent()
+            if parent:
+                text = parent.get_text()
+                refs = re.findall(bible_ref_pattern, text, re.IGNORECASE)
+                if refs:
+                    reading1_ref = refs[0]
+        
+        # Look for "Responsorial Psalm" or "Psalm" section
+        psalm_section = soup.find(string=re.compile(r'Responsorial\s+Psalm|Psalm\s+Response', re.I))
+        if psalm_section:
+            parent = psalm_section.find_parent()
+            if parent:
+                text = parent.get_text()
+                refs = re.findall(bible_ref_pattern, text, re.IGNORECASE)
+                if refs:
+                    psalm_ref = refs[0]
+        
+        # Look for "Gospel" section
+        gospel_section = soup.find(string=re.compile(r'Gospel', re.I))
+        if gospel_section:
+            parent = gospel_section.find_parent()
+            if parent:
+                text = parent.get_text()
+                refs = re.findall(bible_ref_pattern, text, re.IGNORECASE)
+                if refs:
+                    gospel_ref = refs[0]
+        
+        # Fallback: if we found references but couldn't match to sections, assign in order
+        if not reading1_ref and not psalm_ref and not gospel_ref and all_refs:
+            # Assign first reference to reading1, look for Psalm, last to gospel
+            reading1_ref = all_refs[0] if len(all_refs) > 0 else ''
+            # Look for Psalm reference (usually contains "Ps" or "Psalm")
+            psalm_candidates = [r for r in all_refs if 'ps' in r.lower() or 'psalm' in r.lower()]
+            psalm_ref = psalm_candidates[0] if psalm_candidates else (all_refs[1] if len(all_refs) > 1 else '')
+            gospel_ref = all_refs[-1] if len(all_refs) > 2 else (all_refs[-1] if len(all_refs) > 1 and not psalm_ref else '')
+        
+        # Update result with found references
+        if reading1_ref:
+            result['reading1']['reference'] = reading1_ref
+            logger.info(f"✅ Found Reading 1: {reading1_ref}")
+        
+        if psalm_ref:
+            result['responsorialPsalm']['reference'] = psalm_ref
+            logger.info(f"✅ Found Responsorial Psalm: {psalm_ref}")
+        
+        if gospel_ref:
+            result['gospel']['reference'] = gospel_ref
+            logger.info(f"✅ Found Gospel: {gospel_ref}")
+        
+        # If we didn't find any references, log warning but still return structure
+        if not reading1_ref and not psalm_ref and not gospel_ref:
+            logger.warning(f"⚠️  Could not extract references from USCCB page for {target_date}")
+            # Return None to indicate failure
+            return None
+        
+        return result
         
     except Exception as e:
         logger.error(f"❌ Error fetching USCCB data: {str(e)}")
