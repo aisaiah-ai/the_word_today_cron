@@ -243,13 +243,16 @@ def fetch_public_scripture_text(reference: str) -> str:
         return ""
     
     # Build verse range string
-    if len(verses) == 1:
-        verse_ref = f"{chapter}:{verses[0]}"
-    elif len(verses) > 1:
-        verse_ref = f"{chapter}:{verses[0]}-{verses[-1]}"
-    else:
+    # Handle complex formats like "Psalm 98:5-6, 7-8, 9"
+    # For bible-api.com, simplify to first and last verse
+    if len(verses) == 0:
         logger.warning(f"⚠️  No verses found in reference: {reference}")
         return ""
+    elif len(verses) == 1:
+        verse_ref = f"{chapter}:{verses[0]}"
+    else:
+        # Use first and last verse to create a simple range
+        verse_ref = f"{chapter}:{verses[0]}-{verses[-1]}"
     
     # Format book name for API (handle abbreviations)
     # bible-api.com uses full book names
