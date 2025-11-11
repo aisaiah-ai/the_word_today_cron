@@ -22,55 +22,114 @@ logger = logging.getLogger(__name__)
 # Firebase initialization (lazy - only once)
 _firebase_initialized = False
 _db = None
+_db_secondary = None
 
 
-def initialize_firebase():
-    """Initialize Firebase Admin SDK from environment variable or Secret Manager"""
-    global _firebase_initialized, _db
+def _get_firebase_credentials(env_var_json, env_var_b64, env_var_path, app_name='default'):
+    """
+    Helper function to get Firebase credentials from various sources.
+    Returns credentials object or None if not found.
+    """
+    # Try to get credentials from environment variable (JSON string)
+    firebase_creds_json = os.environ.get(env_var_json)
     
-    if _firebase_initialized:
-        return _db
+    # If not found, try base64 encoded version
+    if not firebase_creds_json:
+        firebase_creds_b64 = os.environ.get(env_var_b64)
+        if firebase_creds_b64:
+            firebase_creds_json = base64.b64decode(firebase_creds_b64).decode('utf-8')
+            logger.info(f"✅ Decoded Firebase credentials from base64 for {app_name}")
     
-    try:
-        # Try to get credentials from environment variable (JSON string)
-        firebase_creds_json = os.environ.get('FIREBASE_CREDENTIALS_JSON')
+    if firebase_creds_json:
+        # Parse JSON string
+        cred_dict = json.loads(firebase_creds_json)
+        cred = credentials.Certificate(cred_dict)
+        logger.info(f"✅ Initialized Firebase {app_name} from {env_var_json}")
+        return cred
+    
+    # Try to get from file path (for local development)
+    firebase_cred_path = os.environ.get(env_var_path)
+    if firebase_cred_path and os.path.exists(firebase_cred_path):
+        cred = credentials.Certificate(firebase_cred_path)
+        logger.info(f"✅ Initialized Firebase {app_name} from file: {firebase_cred_path}")
+        return cred
+    
+    # No credentials found - return None (caller will handle Application Default Credentials)
+    return None
+
+
+def initialize_firebase(project='primary'):
+    """
+    Initialize Firebase Admin SDK from environment variable or Secret Manager.
+    
+    Args:
+        project: 'primary' or 'secondary' - which Firebase project to initialize
+    
+    Returns:
+        Firestore client instance
+    """
+    global _firebase_initialized, _db, _db_secondary
+    
+    if project == 'primary':
+        if _db is not None:
+            return _db
         
-        # If not found, try base64 encoded version
-        if not firebase_creds_json:
-            firebase_creds_b64 = os.environ.get('FIREBASE_CREDENTIALS_JSON_B64')
-            if firebase_creds_b64:
-                firebase_creds_json = base64.b64decode(firebase_creds_b64).decode('utf-8')
-                logger.info("✅ Decoded Firebase credentials from base64")
-        
-        if firebase_creds_json:
-            # Parse JSON string
-            cred_dict = json.loads(firebase_creds_json)
-            cred = credentials.Certificate(cred_dict)
-            logger.info("✅ Initialized Firebase from FIREBASE_CREDENTIALS_JSON")
-        else:
-            # Try to get from file path (for local development)
-            firebase_cred_path = os.environ.get('FIREBASE_CRED')
-            if firebase_cred_path and os.path.exists(firebase_cred_path):
-                cred = credentials.Certificate(firebase_cred_path)
-                logger.info(f"✅ Initialized Firebase from file: {firebase_cred_path}")
-            else:
-                # Use Application Default Credentials (for Cloud Functions)
-                cred = credentials.ApplicationDefault()
-                logger.info("✅ Initialized Firebase using Application Default Credentials")
-        
-        # Initialize Firebase only if not already initialized
         try:
-            firebase_admin.get_app()
-        except ValueError:
-            firebase_admin.initialize_app(cred)
+            cred = _get_firebase_credentials(
+                'FIREBASE_CREDENTIALS_JSON',
+                'FIREBASE_CREDENTIALS_JSON_B64',
+                'FIREBASE_CRED',
+                'primary'
+            )
+            
+            # Initialize Firebase only if not already initialized
+            try:
+                app = firebase_admin.get_app('primary')
+            except ValueError:
+                firebase_admin.initialize_app(cred, name='primary')
+            
+            _db = firestore.client(app=firebase_admin.get_app('primary'))
+            _firebase_initialized = True
+            logger.info("✅ Primary Firebase initialized")
+            return _db
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize primary Firebase: {str(e)}")
+            raise
+    
+    elif project == 'secondary':
+        if _db_secondary is not None:
+            return _db_secondary
         
-        _db = firestore.client()
-        _firebase_initialized = True
-        return _db
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize Firebase: {str(e)}")
-        raise
+        try:
+            # Try to get credentials from environment variables first
+            cred = _get_firebase_credentials(
+                'FIREBASE_CREDENTIALS_JSON_SECONDARY',
+                'FIREBASE_CREDENTIALS_JSON_B64_SECONDARY',
+                'FIREBASE_CRED_SECONDARY',
+                'secondary'
+            )
+            
+            # If no credentials provided, use Application Default Credentials
+            if cred is None:
+                logger.info("ℹ️ No secondary Firebase credentials found, using Application Default Credentials")
+                cred = credentials.ApplicationDefault()
+            
+            # Initialize secondary Firebase app
+            try:
+                app = firebase_admin.get_app('secondary')
+            except ValueError:
+                firebase_admin.initialize_app(cred, name='secondary')
+            
+            _db_secondary = firestore.client(app=firebase_admin.get_app('secondary'))
+            logger.info("✅ Secondary Firebase initialized")
+            return _db_secondary
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize secondary Firebase: {str(e)}")
+            raise
+    else:
+        raise ValueError(f"Invalid project: {project}. Must be 'primary' or 'secondary'")
 
 
 def generate_usccb_url(target_date: date) -> str:
@@ -403,7 +462,7 @@ def generate_id() -> str:
     return f"{int(datetime.now().timestamp() * 1000)}-{str(hash(datetime.now().isoformat()))[-9:]}"
 
 
-def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
+def seed_daily_reading(target_date: date, dry_run: bool = False, project='primary') -> Dict:
     """
     Seed responsorial psalm for a daily reading document
     Only adds responsorial_psalm and responsorial_psalm_verse fields
@@ -412,18 +471,18 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
     Args:
         target_date: Date to seed
         dry_run: If True, don't write to Firestore
+        project: 'primary' or 'secondary' - which Firebase project to write to
     
     Returns:
         Dict with seeding results
     """
-    if not _firebase_initialized:
-        initialize_firebase()
+    db = initialize_firebase(project)
     
     doc_id = target_date.strftime("%Y-%m-%d")
     logger.info(f"📅 Processing {doc_id} for responsorial psalm")
     
     # Check if document exists
-    doc_ref = _db.collection('daily_scripture').document(doc_id)
+    doc_ref = db.collection('daily_scripture').document(doc_id)
     existing_doc = doc_ref.get()
     
     if not existing_doc.exists:
@@ -500,21 +559,21 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
         return {'status': 'error', 'doc_id': doc_id, 'error': str(e)}
 
 
-def delete_old_readings(cutoff_date: date, dry_run: bool = False) -> Dict:
+def delete_old_readings(cutoff_date: date, dry_run: bool = False, project='primary') -> Dict:
     """
     Delete readings older than the cutoff date
     
     Args:
         cutoff_date: Delete all documents before this date
         dry_run: If True, don't actually delete
+        project: 'primary' or 'secondary' - which Firebase project to clean up
     
     Returns:
         Dict with deletion results
     """
-    if not _firebase_initialized:
-        initialize_firebase()
+    db = initialize_firebase(project)
     
-    logger.info(f"🗑️  Deleting readings older than {cutoff_date}")
+    logger.info(f"🗑️  Deleting readings older than {cutoff_date} from {project} Firebase")
     
     deleted_count = 0
     errors = []
@@ -525,7 +584,7 @@ def delete_old_readings(cutoff_date: date, dry_run: bool = False) -> Dict:
         cutoff_id = cutoff_date.strftime("%Y-%m-%d")
         
         # Get all documents
-        docs = _db.collection('daily_scripture').stream()
+        docs = db.collection('daily_scripture').stream()
         
         for doc in docs:
             doc_id = doc.id
@@ -536,15 +595,15 @@ def delete_old_readings(cutoff_date: date, dry_run: bool = False) -> Dict:
             
             if doc_id < cutoff_id:
                 if dry_run:
-                    logger.info(f"🧪 DRY RUN: Would delete {doc_id}")
+                    logger.info(f"🧪 DRY RUN: Would delete {doc_id} from {project}")
                     deleted_count += 1
                 else:
                     try:
-                        _db.collection('daily_scripture').document(doc_id).delete()
-                        logger.info(f"🗑️  Deleted {doc_id}")
+                        db.collection('daily_scripture').document(doc_id).delete()
+                        logger.info(f"🗑️  Deleted {doc_id} from {project}")
                         deleted_count += 1
                     except Exception as e:
-                        logger.error(f"❌ Error deleting {doc_id}: {str(e)}")
+                        logger.error(f"❌ Error deleting {doc_id} from {project}: {str(e)}")
                         errors.append({'doc_id': doc_id, 'error': str(e)})
         
         logger.info(f"✅ Deleted {deleted_count} old documents")
@@ -580,8 +639,33 @@ def seed_daily_readings_cron(request):
         logger.info(f"Request method: {request.method}")
         logger.info(f"Timestamp: {datetime.now().isoformat()}")
         
-        # Initialize Firebase
-        initialize_firebase()
+        # Initialize Firebase (primary)
+        initialize_firebase('primary')
+        
+        # Check if secondary Firebase should be used
+        # Secondary is enabled if credentials are provided OR if project ID is specified
+        secondary_project_id = os.environ.get('FIREBASE_PROJECT_ID_SECONDARY')
+        has_secondary_creds = (
+            os.environ.get('FIREBASE_CREDENTIALS_JSON_SECONDARY') or
+            os.environ.get('FIREBASE_CREDENTIALS_JSON_B64_SECONDARY') or
+            (os.environ.get('FIREBASE_CRED_SECONDARY') and os.path.exists(os.environ.get('FIREBASE_CRED_SECONDARY', '')))
+        )
+        
+        # Try to initialize secondary Firebase if credentials provided OR if project ID specified
+        has_secondary = False
+        if has_secondary_creds or secondary_project_id:
+            try:
+                initialize_firebase('secondary')
+                has_secondary = True
+                if has_secondary_creds:
+                    logger.info("✅ Secondary Firebase credentials detected - will seed both projects")
+                else:
+                    logger.info("✅ Secondary Firebase initialized using Application Default Credentials - will seed both projects")
+            except Exception as e:
+                logger.warning(f"⚠️ Secondary Firebase initialization failed (will continue with primary only): {str(e)}")
+                has_secondary = False
+        else:
+            logger.info("ℹ️ No secondary Firebase configured - seeding primary project only")
         
         # Clean up old readings (older than 2 months)
         today = date.today()
@@ -597,8 +681,19 @@ def seed_daily_readings_cron(request):
         
         dry_run = os.environ.get('DRY_RUN', '').lower() == 'true'
         
-        logger.info(f"🗑️  Cleaning up readings older than {cutoff_date}")
-        cleanup_result = delete_old_readings(cutoff_date, dry_run)
+        # Clean up primary
+        logger.info(f"🗑️  Cleaning up readings older than {cutoff_date} from primary")
+        cleanup_result_primary = delete_old_readings(cutoff_date, dry_run, 'primary')
+        
+        # Clean up secondary if enabled
+        cleanup_result_secondary = None
+        if has_secondary:
+            try:
+                logger.info(f"🗑️  Cleaning up readings older than {cutoff_date} from secondary")
+                cleanup_result_secondary = delete_old_readings(cutoff_date, dry_run, 'secondary')
+            except Exception as e:
+                logger.warning(f"⚠️ Secondary cleanup failed: {str(e)}")
+                cleanup_result_secondary = {'status': 'error', 'deleted_count': 0, 'errors': [{'error': str(e)}]}
         
         # Get parameters from request or calculate next month's dates
         today = date.today()
@@ -669,12 +764,22 @@ def seed_daily_readings_cron(request):
             'processed_dates': [],
             'successful': [],
             'errors': [],
+            'firebase_projects': ['primary'] + (['secondary'] if has_secondary else []),
             'cleanup': {
-                'cutoff_date': cutoff_date.isoformat(),
-                'deleted_count': cleanup_result.get('deleted_count', 0),
-                'errors': cleanup_result.get('errors', [])
+                'primary': {
+                    'cutoff_date': cutoff_date.isoformat(),
+                    'deleted_count': cleanup_result_primary.get('deleted_count', 0),
+                    'errors': cleanup_result_primary.get('errors', [])
+                }
             }
         }
+        
+        # Add secondary cleanup results if applicable
+        if has_secondary and cleanup_result_secondary:
+            results['cleanup']['secondary'] = {
+                'deleted_count': cleanup_result_secondary.get('deleted_count', 0),
+                'errors': cleanup_result_secondary.get('errors', [])
+            }
         
         # Seed readings for the specified date range
         for i in range(days_to_seed):
@@ -693,7 +798,17 @@ def seed_daily_readings_cron(request):
             date_str = target_date.strftime('%Y-%m-%d')
             logger.info(f"📅 Processing date: {date_str}")
             
-            result = seed_daily_reading(target_date, dry_run)
+            # Seed to primary Firebase
+            result = seed_daily_reading(target_date, dry_run, 'primary')
+            
+            # Seed to secondary Firebase if enabled
+            if has_secondary and result['status'] == 'success':
+                try:
+                    result_secondary = seed_daily_reading(target_date, dry_run, 'secondary')
+                    if result_secondary['status'] != 'success':
+                        logger.warning(f"⚠️ Secondary seeding failed for {date_str}: {result_secondary.get('reason', 'Unknown')}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Secondary seeding failed for {date_str}: {str(e)}")
             
             if result['status'] == 'success':
                 results['successful'].append(date_str)
