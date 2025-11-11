@@ -167,7 +167,7 @@ def fetch_usccb_reading_data(target_date: date) -> Optional[Dict]:
             'title': f"Readings for {target_date.strftime('%A, %B %d, %Y')}",
             'url': url,
             'reading1': {'title': 'Reading 1', 'reference': ''},
-            'responsorialPsalm': {'title': 'Responsorial Psalm', 'reference': ''},
+            'responsorialPsalm': {'title': 'Responsorial Psalm', 'reference': '', 'response': ''},
             'gospel': {'title': 'Gospel', 'reference': ''}
         }
         
@@ -202,6 +202,20 @@ def fetch_usccb_reading_data(target_date: date) -> Optional[Dict]:
                 elif 'Responsorial Psalm' in section_name:
                     result['responsorialPsalm']['reference'] = reference
                     logger.info(f"✅ Found Responsorial Psalm: {reference}")
+                    
+                    # Extract the psalm response/refrain (e.g., "R. In you, O Lord, I have found my peace.")
+                    # Look for the psalm content after the header
+                    content_body = header.find_next_sibling('div', class_='content-body')
+                    if content_body:
+                        # Find text that starts with "R." or "R. ("
+                        response_match = re.search(r'R\.\s*(?:\([^)]+\)\s*)?(.+?)(?:\n|$)', content_body.get_text(), re.MULTILINE)
+                        if response_match:
+                            response = response_match.group(1).strip()
+                            # Remove any trailing asterisks or special chars
+                            response = re.sub(r'\*+$', '', response).strip()
+                            result['responsorialPsalm']['response'] = response
+                            logger.info(f"✅ Found Psalm Response: {response}")
+                    
                 elif 'Gospel' in section_name:
                     result['gospel']['reference'] = reference
                     logger.info(f"✅ Found Gospel: {reference}")
@@ -414,9 +428,10 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
         logger.info(f"⏭️  Document {doc_id} already has responsorial psalm - skipping")
         return {'status': 'skipped', 'doc_id': doc_id, 'reason': 'already_exists'}
     
-    # Try to get responsorial psalm reference from USCCB
+    # Try to get responsorial psalm reference and response from USCCB
     usccb_reading = fetch_usccb_reading_data(target_date)
     psalm_ref = usccb_reading.get('responsorialPsalm', {}).get('reference', '') if usccb_reading else ''
+    psalm_response = usccb_reading.get('responsorialPsalm', {}).get('response', '') if usccb_reading else ''
     
     if not psalm_ref or psalm_ref == 'TBD':
         logger.warning(f"⚠️  No responsorial psalm reference found for {doc_id}")
@@ -436,6 +451,11 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
         'responsorial_psalm_verse': psalm_ref,
         'updatedAt': firestore.SERVER_TIMESTAMP
     }
+    
+    # Add responsorial psalm response/refrain if found
+    if psalm_response:
+        update_data['responsorial_psalm_response'] = psalm_response
+        logger.info(f"📖 Adding responsorial psalm response: {psalm_response}")
     
     logger.info(f"📖 Adding responsorial psalm: {psalm_ref}")
     
