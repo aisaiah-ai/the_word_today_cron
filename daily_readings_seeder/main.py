@@ -171,82 +171,48 @@ def fetch_usccb_reading_data(target_date: date) -> Optional[Dict]:
             'gospel': {'title': 'Gospel', 'reference': ''}
         }
         
-        # USCCB page structure: Look for reading references in various formats
-        # Common patterns: "Reading 1", "Responsorial Psalm", "Gospel"
-        # References are usually in <p> tags or <div> tags with class names
+        # USCCB uses <div class="address"> tags for Bible references
+        # Structure: <h3 class="name">Reading 1</h3> <div class="address"><a>Reference</a></div>
         
-        # Try to find reading references in the HTML
-        # Look for common patterns like "Rom 9:1-5" or "Luke 14:1-6"
-        bible_ref_pattern = r'\b([1-3]?\s*(?:[A-Z][a-z]+|Cor|Thess|Tim|Jn|Jn|Mk|Mt|Lk|Ps|Rom|Heb|Gal|Eph|Phil|Col|Jas|Pet|Rev|Gen|Ex|Lev|Num|Deut|Josh|Judg|Ruth|Sam|Kgs|Chr|Ezra|Neh|Esth|Job|Prov|Eccl|Song|Is|Jer|Lam|Ezek|Dan|Hos|Joel|Amos|Obad|Jonah|Mic|Nah|Hab|Zeph|Hag|Zech|Mal))\s+\d+:\d+(?:-\d+)?(?:\s*,\s*\d+)?(?:\s*-\s*\d+[a-z]*)?'
+        # Find all content-header sections
+        headers = soup.find_all('div', class_='content-header')
         
-        # Find all potential Bible references in the page
-        page_text = soup.get_text()
-        all_refs = re.findall(bible_ref_pattern, page_text, re.IGNORECASE)
+        for header in headers:
+            # Get the name/title
+            name_elem = header.find('h3', class_='name')
+            if not name_elem:
+                continue
+            
+            section_name = name_elem.get_text().strip()
+            
+            # Get the reference from the address div
+            address_elem = header.find('div', class_='address')
+            if not address_elem:
+                continue
+            
+            # The reference is in an <a> tag inside the address div
+            ref_link = address_elem.find('a')
+            if ref_link:
+                reference = ref_link.get_text().strip()
+                
+                # Match to the appropriate section
+                if 'Reading 1' in section_name or 'First Reading' in section_name:
+                    result['reading1']['reference'] = reference
+                    logger.info(f"✅ Found Reading 1: {reference}")
+                elif 'Responsorial Psalm' in section_name:
+                    result['responsorialPsalm']['reference'] = reference
+                    logger.info(f"✅ Found Responsorial Psalm: {reference}")
+                elif 'Gospel' in section_name:
+                    result['gospel']['reference'] = reference
+                    logger.info(f"✅ Found Gospel: {reference}")
+                elif 'Reading 2' in section_name or 'Second Reading' in section_name:
+                    # Add reading2 if present
+                    result['reading2'] = {'title': 'Reading 2', 'reference': reference}
+                    logger.info(f"✅ Found Reading 2: {reference}")
         
-        # Look for specific sections
-        # Reading 1 is usually first, Responsorial Psalm second, Gospel last
-        
-        # Try to find reading sections by looking for headings
-        reading1_ref = ''
-        psalm_ref = ''
-        gospel_ref = ''
-        
-        # Look for "Reading 1" or "First Reading" section
-        reading1_section = soup.find(string=re.compile(r'Reading\s+1|First\s+Reading', re.I))
-        if reading1_section:
-            parent = reading1_section.find_parent()
-            if parent:
-                text = parent.get_text()
-                refs = re.findall(bible_ref_pattern, text, re.IGNORECASE)
-                if refs:
-                    reading1_ref = refs[0]
-        
-        # Look for "Responsorial Psalm" or "Psalm" section
-        psalm_section = soup.find(string=re.compile(r'Responsorial\s+Psalm|Psalm\s+Response', re.I))
-        if psalm_section:
-            parent = psalm_section.find_parent()
-            if parent:
-                text = parent.get_text()
-                refs = re.findall(bible_ref_pattern, text, re.IGNORECASE)
-                if refs:
-                    psalm_ref = refs[0]
-        
-        # Look for "Gospel" section
-        gospel_section = soup.find(string=re.compile(r'Gospel', re.I))
-        if gospel_section:
-            parent = gospel_section.find_parent()
-            if parent:
-                text = parent.get_text()
-                refs = re.findall(bible_ref_pattern, text, re.IGNORECASE)
-                if refs:
-                    gospel_ref = refs[0]
-        
-        # Fallback: if we found references but couldn't match to sections, assign in order
-        if not reading1_ref and not psalm_ref and not gospel_ref and all_refs:
-            # Assign first reference to reading1, look for Psalm, last to gospel
-            reading1_ref = all_refs[0] if len(all_refs) > 0 else ''
-            # Look for Psalm reference (usually contains "Ps" or "Psalm")
-            psalm_candidates = [r for r in all_refs if 'ps' in r.lower() or 'psalm' in r.lower()]
-            psalm_ref = psalm_candidates[0] if psalm_candidates else (all_refs[1] if len(all_refs) > 1 else '')
-            gospel_ref = all_refs[-1] if len(all_refs) > 2 else (all_refs[-1] if len(all_refs) > 1 and not psalm_ref else '')
-        
-        # Update result with found references
-        if reading1_ref:
-            result['reading1']['reference'] = reading1_ref
-            logger.info(f"✅ Found Reading 1: {reading1_ref}")
-        
-        if psalm_ref:
-            result['responsorialPsalm']['reference'] = psalm_ref
-            logger.info(f"✅ Found Responsorial Psalm: {psalm_ref}")
-        
-        if gospel_ref:
-            result['gospel']['reference'] = gospel_ref
-            logger.info(f"✅ Found Gospel: {gospel_ref}")
-        
-        # If we didn't find any references, log warning but still return structure
-        if not reading1_ref and not psalm_ref and not gospel_ref:
-            logger.warning(f"⚠️  Could not extract references from USCCB page for {target_date}")
-            # Return None to indicate failure
+        # If we didn't find responsorial psalm, return None
+        if not result['responsorialPsalm']['reference']:
+            logger.warning(f"⚠️  Could not extract responsorial psalm reference from USCCB page for {target_date}")
             return None
         
         return result
