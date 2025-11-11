@@ -11,37 +11,56 @@ The seeder will:
 
 ## Enabling Secondary Firebase
 
-To enable seeding to a second Firebase project, set one of these environment variables:
+⚠️ **IMPORTANT: Firebase Admin SDK service accounts have key creation disabled by organizational policy.**
 
-### Option 1: Using Service Account Credentials (Recommended for Production)
-
-Add the following GitHub Secrets:
-
-```bash
-# Secondary Firebase credentials (base64 encoded)
-FIREBASE_CREDENTIALS_JSON_B64_SECONDARY=<base64-encoded-json>
-
-# OR as raw JSON
-FIREBASE_CREDENTIALS_JSON_SECONDARY=<json-string>
+**DO NOT attempt to create keys using gcloud CLI** - it will fail with:
+```
+ERROR: Key creation is not allowed on this service account
 ```
 
-### Option 2: Using Application Default Credentials
+### Option 1: Download Key from Firebase Console (ONLY Working Method)
 
-Set the project ID:
+**Steps:**
+1. Go to Firebase Console: https://console.firebase.google.com/
+2. Select your secondary project (e.g., "AIsaiah SFA Dev")
+3. Project Settings (gear icon) → **Service Accounts** tab
+4. Click **"Generate New Private Key"** button
+5. Download the JSON file
+6. Add to GitHub Secrets:
 
 ```bash
-FIREBASE_PROJECT_ID_SECONDARY=<your-secondary-project-id>
+gh secret set FIREBASE_CREDENTIALS_JSON_SECONDARY \
+  --body "$(cat /path/to/downloaded-secondary-firebase-key.json)"
 ```
 
-The function will use Application Default Credentials to access the secondary project.
+**This is the ONLY method that works** - Firebase Console bypasses the organizational restriction.
+
+### Option 2: Cross-Project Access (Alternative - No Key Needed)
+
+Grant the Cloud Function's service account access to the secondary Firebase project:
+
+```bash
+gcloud projects add-iam-policy-binding aisaiah-sfa-dev-app \
+  --member="serviceAccount:938552047954-compute@developer.gserviceaccount.com" \
+  --role="roles/datastore.user"
+```
+
+Then set only the project ID:
+```bash
+gh secret set FIREBASE_PROJECT_ID_SECONDARY --body "aisaiah-sfa-dev-app"
+```
+
+The function will use Application Default Credentials (the Cloud Function's service account) to access the secondary project.
 
 ### Option 3: Local Development
 
-For local testing:
+For local testing, you must have the Firebase key downloaded from Firebase Console:
 
 ```bash
 export FIREBASE_CRED_SECONDARY=/path/to/secondary-firebase-key.json
 ```
+
+**Note:** You cannot create this key via gcloud - must download from Firebase Console.
 
 ## Disabling Secondary Firebase
 

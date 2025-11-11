@@ -1,11 +1,20 @@
 # Secondary Firebase Setup Without Service Account Keys
 
-## Problem
+## ⚠️ IMPORTANT: Read This First
 
-Firebase Admin SDK service accounts have key creation disabled by organizational policy:
+**Firebase Admin SDK service accounts have key creation disabled by organizational policy.**
+
+**DO NOT TRY THESE - THEY WILL FAIL:**
+- ❌ `gcloud iam service-accounts keys create` - Will fail
+- ❌ Creating new service accounts - Admin SDK restriction applies
+- ❌ Any gcloud CLI key creation commands - Blocked by org policy
+
 ```
 ERROR: Key creation is not allowed on this service account
+constraints/iam.disableServiceAccountKeyCreation
 ```
+
+**This is a SECURITY RESTRICTION and cannot be bypassed via gcloud.**
 
 ## Solution Options
 

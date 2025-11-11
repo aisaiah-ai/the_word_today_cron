@@ -109,12 +109,27 @@ The function runs automatically:
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `FIREBASE_CREDENTIALS_JSON_B64` | Firebase credentials (base64 encoded) | - | ✅ Yes* |
-| `FIREBASE_CREDENTIALS_JSON` | Firebase credentials (JSON string) | - | No* |
-| `FIREBASE_CRED` | Firebase credentials file path (local dev) | - | No* |
+| `FIREBASE_CREDENTIALS_JSON_B64` | Primary Firebase credentials (base64) | - | ✅ Yes* |
+| `FIREBASE_CREDENTIALS_JSON` | Primary Firebase credentials (JSON string) | - | No* |
+| `FIREBASE_CRED` | Primary Firebase credentials file path (local) | - | No* |
+| `FIREBASE_CREDENTIALS_JSON_B64_SECONDARY` | Secondary Firebase credentials (base64) | - | No** |
+| `FIREBASE_CREDENTIALS_JSON_SECONDARY` | Secondary Firebase credentials (JSON) | - | No** |
+| `FIREBASE_CRED_SECONDARY` | Secondary Firebase credentials file path | - | No** |
+| `FIREBASE_PROJECT_ID_SECONDARY` | Secondary Firebase project ID | - | No** |
 | `DRY_RUN` | If `True`, don't write to Firestore | `False` | No |
 
-*Firebase credentials: The function tries `FIREBASE_CREDENTIALS_JSON_B64` first, then `FIREBASE_CREDENTIALS_JSON`, then `FIREBASE_CRED` file path, then Application Default Credentials.
+*Primary Firebase credentials: The function tries `FIREBASE_CREDENTIALS_JSON_B64` first, then `FIREBASE_CREDENTIALS_JSON`, then `FIREBASE_CRED` file path, then Application Default Credentials.
+
+**Secondary Firebase (Optional): If ANY of these are set, the function will seed to both primary and secondary Firebase projects. If NONE are set, only primary is used.
+
+### ⚠️ Important: Getting Firebase Service Account Keys
+
+**DO NOT use gcloud CLI to create Firebase keys** - it will fail due to organizational policy:
+```
+ERROR: Key creation is not allowed on this service account
+```
+
+**ONLY working method:** Download from Firebase Console (Project Settings → Service Accounts → Generate New Private Key)
 
 ## 🔍 Testing
 
