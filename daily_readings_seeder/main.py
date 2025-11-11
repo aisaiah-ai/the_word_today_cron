@@ -423,9 +423,14 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
     
     existing_data = existing_doc.to_dict()
     
-    # Check if responsorial psalm already exists
-    if existing_data.get('responsorial_psalm') and existing_data.get('responsorial_psalm_verse'):
-        logger.info(f"⏭️  Document {doc_id} already has responsorial psalm - skipping")
+    # Check if responsorial psalm and response already exist
+    has_psalm = existing_data.get('responsorial_psalm')
+    has_psalm_verse = existing_data.get('responsorial_psalm_verse')
+    has_psalm_response = existing_data.get('responsorial_psalm_response')
+    
+    # Skip only if ALL three fields exist
+    if has_psalm and has_psalm_verse and has_psalm_response:
+        logger.info(f"⏭️  Document {doc_id} already has complete responsorial psalm - skipping")
         return {'status': 'skipped', 'doc_id': doc_id, 'reason': 'already_exists'}
     
     # Try to get responsorial psalm reference and response from USCCB
@@ -437,27 +442,30 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
         logger.warning(f"⚠️  No responsorial psalm reference found for {doc_id}")
         return {'status': 'skipped', 'doc_id': doc_id, 'reason': 'no_reference_found'}
     
-    # Fetch scripture text
-    psalm_text = fetch_public_scripture_text(psalm_ref)
-    
-    if not psalm_text:
-        logger.warning(f"⚠️  Could not fetch text for {psalm_ref} - may be Deuterocanonical or unsupported format")
-        # Skip gracefully - responsorial psalm text not available from public domain API
-        return {'status': 'skipped', 'doc_id': doc_id, 'reason': f'Could not fetch text for {psalm_ref}'}
-    
-    # Prepare update data - ONLY responsorial psalm fields
+    # Prepare update data - only add missing fields
     update_data = {
-        'responsorial_psalm': psalm_text,
-        'responsorial_psalm_verse': psalm_ref,
         'updatedAt': firestore.SERVER_TIMESTAMP
     }
     
-    # Add responsorial psalm response/refrain if found
-    if psalm_response:
+    # Add psalm text if missing
+    if not has_psalm:
+        psalm_text = fetch_public_scripture_text(psalm_ref)
+        if not psalm_text:
+            logger.warning(f"⚠️  Could not fetch text for {psalm_ref} - may be Deuterocanonical or unsupported format")
+            # Skip gracefully if we can't get the text
+            return {'status': 'skipped', 'doc_id': doc_id, 'reason': f'Could not fetch text for {psalm_ref}'}
+        update_data['responsorial_psalm'] = psalm_text
+        logger.info(f"📖 Adding responsorial psalm text: {psalm_ref}")
+    
+    # Add psalm verse if missing
+    if not has_psalm_verse:
+        update_data['responsorial_psalm_verse'] = psalm_ref
+        logger.info(f"📖 Adding responsorial psalm verse: {psalm_ref}")
+    
+    # Add psalm response/refrain if missing and found
+    if not has_psalm_response and psalm_response:
         update_data['responsorial_psalm_response'] = psalm_response
         logger.info(f"📖 Adding responsorial psalm response: {psalm_response}")
-    
-    logger.info(f"📖 Adding responsorial psalm: {psalm_ref}")
     
     # Preserve existing fields - don't overwrite them
     if dry_run:
