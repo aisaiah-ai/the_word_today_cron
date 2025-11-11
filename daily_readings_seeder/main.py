@@ -74,11 +74,11 @@ def initialize_firebase():
 
 
 def generate_usccb_url(target_date: date) -> str:
-    """Generate USCCB daily readings URL"""
+    """Generate USCCB daily readings URL in MMDDYY format"""
     month = str(target_date.month).zfill(2)
     day = str(target_date.day).zfill(2)
-    year = target_date.year
-    return f"https://bible.usccb.org/bible/readings/{month}/{day}/{year}.cfm"
+    year = str(target_date.year)[-2:]  # Last 2 digits of year
+    return f"https://bible.usccb.org/bible/readings/{month}{day}{year}.cfm"
 
 
 def parse_bible_reference(ref: str) -> Dict:
