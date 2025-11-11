@@ -82,7 +82,8 @@ The function runs automatically:
   "id": "2025-11-05",
   "title": "Daily Scripture",
   "reference": "Mk 3:22-30",
-  "body": "[Public domain scripture text]",
+  "body": "[Public domain scripture text for Gospel]",
+  "responsorialPsalmText": "[Public domain scripture text for Responsorial Psalm]",
   "updatedAt": "2025-11-05T10:00:00Z",
   "usccbReading": {
     "id": "unique-id",
@@ -97,7 +98,8 @@ The function runs automatically:
     "responsorialPsalm": {
       "id": "unique-id",
       "title": "Responsorial Psalm",
-      "reference": "Ps 98:1, 2-3ab"
+      "reference": "Ps 98:1, 2-3ab",
+      "text": "[Public domain scripture text for Responsorial Psalm]"
     },
     "gospel": {
       "id": "unique-id",

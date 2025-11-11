@@ -267,6 +267,13 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
     gospel_ref = usccb_reading.get('gospel', {}).get('reference', 'John 3:16') if usccb_reading else 'John 3:16'
     scripture_text = fetch_public_scripture_text(gospel_ref)
     
+    # Get responsorial psalm reference and text
+    psalm_ref = usccb_reading.get('responsorialPsalm', {}).get('reference', '') if usccb_reading else ''
+    psalm_text = ''
+    if psalm_ref and psalm_ref != 'TBD':
+        psalm_text = fetch_public_scripture_text(psalm_ref)
+        logger.info(f"📖 Fetched responsorial psalm text for {psalm_ref}")
+    
     # Construct daily scripture document
     daily_scripture_data = {
         'id': doc_id,
@@ -275,6 +282,10 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
         'body': scripture_text,
         'updatedAt': firestore.SERVER_TIMESTAMP,
     }
+    
+    # Add responsorial psalm text as a separate field
+    if psalm_text:
+        daily_scripture_data['responsorialPsalmText'] = psalm_text
     
     # Add USCCB reading data (references only, no full text)
     if usccb_reading:
@@ -291,7 +302,8 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
             'responsorialPsalm': {
                 'id': generate_id(),
                 'title': usccb_reading.get('responsorialPsalm', {}).get('title', 'Responsorial Psalm'),
-                'reference': usccb_reading.get('responsorialPsalm', {}).get('reference', '')
+                'reference': usccb_reading.get('responsorialPsalm', {}).get('reference', ''),
+                'text': psalm_text if psalm_text else None
             },
             'gospel': {
                 'id': generate_id(),
