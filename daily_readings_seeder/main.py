@@ -413,7 +413,9 @@ def generate_id() -> str:
 
 def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
     """
-    Seed a single day's reading data into Firestore
+    Seed responsorial psalm for a daily reading document
+    Only adds responsorial_psalm and responsorial_psalm_verse fields
+    Preserves ALL other existing data
     
     Args:
         target_date: Date to seed
@@ -426,45 +428,46 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
         initialize_firebase()
     
     doc_id = target_date.strftime("%Y-%m-%d")
-    logger.info(f"📅 Seeding daily reading for {doc_id}")
+    logger.info(f"📅 Processing {doc_id} for responsorial psalm")
     
-    # Get USCCB reading data
-    usccb_reading = fetch_usccb_reading_data(target_date)
-    
-    # Get feast data
-    feast = get_feast_for_date(target_date)
-    
-    # Check if document already exists
+    # Check if document exists
     doc_ref = _db.collection('daily_scripture').document(doc_id)
     existing_doc = doc_ref.get()
-    existing_data = existing_doc.to_dict() if existing_doc.exists else {}
     
-    # Get references from USCCB reading data
-    gospel_ref = usccb_reading.get('gospel', {}).get('reference', 'John 3:16') if usccb_reading else 'John 3:16'
-    first_reading_ref = usccb_reading.get('reading1', {}).get('reference', '') if usccb_reading else ''
-    second_reading_ref = usccb_reading.get('reading2', {}).get('reference', '') if usccb_reading else ''
+    if not existing_doc.exists:
+        logger.warning(f"⚠️  Document {doc_id} does not exist - skipping")
+        return {'status': 'skipped', 'doc_id': doc_id, 'reason': 'document_not_found'}
+    
+    existing_data = existing_doc.to_dict()
+    
+    # Check if responsorial psalm already exists
+    if existing_data.get('responsorial_psalm') and existing_data.get('responsorial_psalm_verse'):
+        logger.info(f"⏭️  Document {doc_id} already has responsorial psalm - skipping")
+        return {'status': 'skipped', 'doc_id': doc_id, 'reason': 'already_exists'}
+    
+    # Try to get responsorial psalm reference from USCCB
+    usccb_reading = fetch_usccb_reading_data(target_date)
     psalm_ref = usccb_reading.get('responsorialPsalm', {}).get('reference', '') if usccb_reading else ''
     
-    # Get USCCB URL
-    usccb_url = generate_usccb_url(target_date) if usccb_reading else ''
+    if not psalm_ref or psalm_ref == 'TBD':
+        logger.warning(f"⚠️  No responsorial psalm reference found for {doc_id}")
+        return {'status': 'skipped', 'doc_id': doc_id, 'reason': 'no_reference_found'}
     
-    # ONLY add responsorial psalm fields, preserve ALL other existing data
-    update_data = {}
+    # Fetch scripture text
+    psalm_text = fetch_public_scripture_text(psalm_ref)
     
-    # Fetch and update responsorial psalm ONLY if missing or empty
-    psalm_exists = existing_data.get('responsorial_psalm')
-    psalm_verse_exists = existing_data.get('responsorial_psalm_verse')
+    if not psalm_text:
+        logger.warning(f"⚠️  Could not fetch text for {psalm_ref}")
+        return {'status': 'skipped', 'doc_id': doc_id, 'reason': 'no_text_fetched'}
     
-    # Only add responsorial psalm if both fields are missing or null
-    if not psalm_exists and not psalm_verse_exists and psalm_ref and psalm_ref != 'TBD':
-        psalm_text = fetch_public_scripture_text(psalm_ref)
-        if psalm_text:
-            update_data['responsorial_psalm'] = psalm_text
-            update_data['responsorial_psalm_verse'] = psalm_ref
-            logger.info(f"📖 Adding responsorial psalm: {psalm_ref}")
+    # Prepare update data - ONLY responsorial psalm fields
+    update_data = {
+        'responsorial_psalm': psalm_text,
+        'responsorial_psalm_verse': psalm_ref,
+        'updatedAt': firestore.SERVER_TIMESTAMP
+    }
     
-    # Update timestamp
-    update_data['updatedAt'] = firestore.SERVER_TIMESTAMP
+    logger.info(f"📖 Adding responsorial psalm: {psalm_ref}")
     
     # Preserve existing fields - don't overwrite them
     if dry_run:
