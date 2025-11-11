@@ -157,6 +157,18 @@ def fetch_usccb_reading_data(target_date: date) -> Optional[Dict]:
         response = requests.get(url, timeout=30, headers={
             'User-Agent': 'Mozilla/5.0 (compatible; Daily Readings Seeder/1.0)'
         })
+        
+        # If 404 or other error, try special day variants (Thanksgiving, etc.)
+        if response.status_code == 404 or response.status_code >= 400:
+            # Check for Thanksgiving (last Thursday of November in USA)
+            # November 2025: Thanksgiving is Nov 27
+            if target_date.month == 11 and target_date.day == 27:
+                url_thanksgiving = url.replace('.cfm', '-Thanksgiving.cfm')
+                logger.info(f"📅 Trying Thanksgiving URL: {url_thanksgiving}")
+                response = requests.get(url_thanksgiving, timeout=30, headers={
+                    'User-Agent': 'Mozilla/5.0 (compatible; Daily Readings Seeder/1.0)'
+                })
+        
         response.raise_for_status()
         
         # Parse HTML to extract references
