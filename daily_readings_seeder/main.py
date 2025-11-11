@@ -8,6 +8,7 @@ import json
 import logging
 import requests
 import base64
+import re
 from datetime import datetime, date, timedelta
 from typing import Dict, Optional, List
 import firebase_admin
@@ -201,23 +202,136 @@ def fetch_usccb_reading_data(target_date: date) -> Optional[Dict]:
 def fetch_public_scripture_text(reference: str) -> str:
     """
     Fetch public domain scripture text for a given reference
-    Uses public domain sources like World English Bible or KJV
+    Uses bible-api.com (KJV - public domain)
     """
     if not reference or reference == 'TBD':
         return ""
     
     parsed = parse_bible_reference(reference)
     
-    # For now, return placeholder - would need API integration
-    # Options:
-    # 1. World English Bible API
-    # 2. Local Bible text files
-    # 3. Bible Gateway API (check licensing)
+    # Format reference for bible-api.com: "John 3:16" or "Romans 9:1-5"
+    # The API expects format like: "John+3:16" or "Romans+9:1-5"
+    book = parsed.get('book', '')
+    chapter = parsed.get('chapter', 0)
+    verses = parsed.get('verses', [])
     
-    logger.info(f"📖 Fetching scripture text for {reference}")
+    if not book or chapter == 0 or not verses:
+        logger.warning(f"⚠️  Could not parse reference: {reference}")
+        return ""
     
-    # Placeholder - actual implementation would fetch from public domain source
-    return f"[Public domain scripture text for {reference}]"
+    # Build verse range string
+    if len(verses) == 1:
+        verse_ref = f"{chapter}:{verses[0]}"
+    elif len(verses) > 1:
+        verse_ref = f"{chapter}:{verses[0]}-{verses[-1]}"
+    else:
+        logger.warning(f"⚠️  No verses found in reference: {reference}")
+        return ""
+    
+    # Format book name for API (handle abbreviations)
+    # bible-api.com uses full book names
+    book_map = {
+        'Romans': 'Romans', 'Rom': 'Romans',
+        'Luke': 'Luke', 'Lk': 'Luke',
+        'John': 'John', 'Jn': 'John',
+        'Matthew': 'Matthew', 'Mt': 'Matthew',
+        'Mark': 'Mark', 'Mk': 'Mark',
+        'Hebrews': 'Hebrews', 'Heb': 'Hebrews',
+        'Psalms': 'Psalms', 'Ps': 'Psalms', 'Psalm': 'Psalms',
+        'Wisdom': 'Wisdom', 'Wis': 'Wisdom',
+        '1 Corinthians': '1 Corinthians', '1Cor': '1 Corinthians', '1 Cor': '1 Corinthians',
+        '2 Corinthians': '2 Corinthians', '2Cor': '2 Corinthians', '2 Cor': '2 Corinthians',
+        'Galatians': 'Galatians', 'Gal': 'Galatians',
+        'Ephesians': 'Ephesians', 'Eph': 'Ephesians',
+        'Philippians': 'Philippians', 'Phil': 'Philippians',
+        'Colossians': 'Colossians', 'Col': 'Colossians',
+        '1 Thessalonians': '1 Thessalonians', '1Thess': '1 Thessalonians', '1 Thess': '1 Thessalonians',
+        '2 Thessalonians': '2 Thessalonians', '2Thess': '2 Thessalonians', '2 Thess': '2 Thessalonians',
+        '1 Timothy': '1 Timothy', '1Tim': '1 Timothy', '1 Tim': '1 Timothy',
+        '2 Timothy': '2 Timothy', '2Tim': '2 Timothy', '2 Tim': '2 Timothy',
+        'Titus': 'Titus',
+        'Philemon': 'Philemon', 'Phlm': 'Philemon',
+        'James': 'James', 'Jas': 'James',
+        '1 Peter': '1 Peter', '1Pet': '1 Peter', '1 Pet': '1 Peter',
+        '2 Peter': '2 Peter', '2Pet': '2 Peter', '2 Pet': '2 Peter',
+        '1 John': '1 John', '1Jn': '1 John', '1 Jn': '1 John',
+        '2 John': '2 John', '2Jn': '2 John', '2 Jn': '2 John',
+        '3 John': '3 John', '3Jn': '3 John', '3 Jn': '3 John',
+        'Jude': 'Jude',
+        'Revelation': 'Revelation', 'Rev': 'Revelation',
+        'Acts': 'Acts',
+        'Genesis': 'Genesis', 'Gen': 'Genesis',
+        'Exodus': 'Exodus', 'Ex': 'Exodus',
+        'Leviticus': 'Leviticus', 'Lev': 'Leviticus',
+        'Numbers': 'Numbers', 'Num': 'Numbers',
+        'Deuteronomy': 'Deuteronomy', 'Deut': 'Deuteronomy',
+        'Joshua': 'Joshua', 'Josh': 'Joshua',
+        'Judges': 'Judges', 'Judg': 'Judges',
+        'Ruth': 'Ruth',
+        '1 Samuel': '1 Samuel', '1Sam': '1 Samuel', '1 Sam': '1 Samuel',
+        '2 Samuel': '2 Samuel', '2Sam': '2 Samuel', '2 Sam': '2 Samuel',
+        '1 Kings': '1 Kings', '1Kgs': '1 Kings', '1 Kgs': '1 Kings',
+        '2 Kings': '2 Kings', '2Kgs': '2 Kings', '2 Kgs': '2 Kings',
+        '1 Chronicles': '1 Chronicles', '1Chr': '1 Chronicles', '1 Chr': '1 Chronicles',
+        '2 Chronicles': '2 Chronicles', '2Chr': '2 Chronicles', '2 Chr': '2 Chronicles',
+        'Ezra': 'Ezra',
+        'Nehemiah': 'Nehemiah', 'Neh': 'Nehemiah',
+        'Esther': 'Esther', 'Esth': 'Esther',
+        'Job': 'Job',
+        'Proverbs': 'Proverbs', 'Prov': 'Proverbs',
+        'Ecclesiastes': 'Ecclesiastes', 'Eccl': 'Ecclesiastes',
+        'Song of Songs': 'Song of Songs', 'Song': 'Song of Songs',
+        'Isaiah': 'Isaiah', 'Is': 'Isaiah',
+        'Jeremiah': 'Jeremiah', 'Jer': 'Jeremiah',
+        'Lamentations': 'Lamentations', 'Lam': 'Lamentations',
+        'Ezekiel': 'Ezekiel', 'Ezek': 'Ezekiel',
+        'Daniel': 'Daniel', 'Dan': 'Daniel',
+        'Hosea': 'Hosea', 'Hos': 'Hosea',
+        'Joel': 'Joel',
+        'Amos': 'Amos',
+        'Obadiah': 'Obadiah', 'Obad': 'Obadiah',
+        'Jonah': 'Jonah',
+        'Micah': 'Micah', 'Mic': 'Micah',
+        'Nahum': 'Nahum', 'Nah': 'Nahum',
+        'Habakkuk': 'Habakkuk', 'Hab': 'Habakkuk',
+        'Zephaniah': 'Zephaniah', 'Zeph': 'Zephaniah',
+        'Haggai': 'Haggai', 'Hag': 'Haggai',
+        'Zechariah': 'Zechariah', 'Zech': 'Zechariah',
+        'Malachi': 'Malachi', 'Mal': 'Malachi',
+    }
+    
+    api_book = book_map.get(book, book)
+    
+    # Build API URL
+    api_ref = f"{api_book}+{verse_ref}"
+    api_url = f"https://bible-api.com/{api_ref}"
+    
+    logger.info(f"📖 Fetching scripture text for {reference} from bible-api.com")
+    
+    try:
+        response = requests.get(api_url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Extract text from API response
+        if 'text' in data:
+            # Clean up the text (remove verse numbers if present, normalize whitespace)
+            text = data['text'].strip()
+            # Remove verse number markers like "1 " at start of lines if present
+            text = re.sub(r'^\d+\s+', '', text, flags=re.MULTILINE)
+            text = ' '.join(text.split())  # Normalize whitespace
+            logger.info(f"✅ Fetched {len(text)} characters for {reference}")
+            return text
+        else:
+            logger.warning(f"⚠️  No text field in API response for {reference}")
+            return ""
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"❌ Error fetching scripture text for {reference}: {str(e)}")
+        return ""
+    except Exception as e:
+        logger.error(f"❌ Unexpected error fetching scripture text for {reference}: {str(e)}")
+        return ""
 
 
 def get_feast_for_date(target_date: date) -> Optional[Dict]:
@@ -278,12 +392,38 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
     usccb_url = generate_usccb_url(target_date) if usccb_reading else ''
     
     # Only fetch text if field is missing or empty in existing document
-    # Don't overwrite existing real text with placeholder text
+    # Don't overwrite existing real text
     update_data = {}
     
-    # Only update fields that are missing or add responsorial psalm fields
-    if not existing_data.get('responsorial_psalm_verse') and psalm_ref:
-        psalm_text = fetch_public_scripture_text(psalm_ref) if psalm_ref and psalm_ref != 'TBD' else None
+    # Fetch and update first_reading if missing
+    if not existing_data.get('first_reading') and first_reading_ref and first_reading_ref != 'TBD':
+        first_reading_text = fetch_public_scripture_text(first_reading_ref)
+        if first_reading_text:
+            update_data['first_reading'] = first_reading_text
+            update_data['first_reading_verse'] = first_reading_ref
+            logger.info(f"📖 Adding first reading: {first_reading_ref}")
+    
+    # Fetch and update gospel if missing
+    if not existing_data.get('gospel') and gospel_ref:
+        gospel_text = fetch_public_scripture_text(gospel_ref)
+        if gospel_text:
+            update_data['gospel'] = gospel_text
+            update_data['gospel_verse'] = gospel_ref
+            update_data['body'] = gospel_text  # body field also contains gospel
+            update_data['reference'] = gospel_ref
+            logger.info(f"📖 Adding gospel: {gospel_ref}")
+    
+    # Fetch and update second_reading if missing
+    if not existing_data.get('second_reading') and second_reading_ref and second_reading_ref != 'TBD':
+        second_reading_text = fetch_public_scripture_text(second_reading_ref)
+        if second_reading_text:
+            update_data['second_reading'] = second_reading_text
+            update_data['second_reading_verse'] = second_reading_ref
+            logger.info(f"📖 Adding second reading: {second_reading_ref}")
+    
+    # Fetch and update responsorial psalm if missing
+    if not existing_data.get('responsorial_psalm_verse') and psalm_ref and psalm_ref != 'TBD':
+        psalm_text = fetch_public_scripture_text(psalm_ref)
         if psalm_text:
             update_data['responsorial_psalm'] = psalm_text
             update_data['responsorial_psalm_verse'] = psalm_ref
