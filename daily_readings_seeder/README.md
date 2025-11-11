@@ -9,11 +9,11 @@ This Cloud Function seeds Firebase Firestore with daily scripture readings data,
 ## 📋 Overview
 
 This function:
-- Seeds daily scripture readings for upcoming dates (default: 14 days)
+- Seeds daily scripture readings for days 1-30 of the next month
 - Fetches USCCB reading references (NOT full text - licensing compliance)
 - Fetches public domain scripture text (World English Bible, KJV, etc.)
 - Links liturgical feast information
-- Runs bi-weekly via Cloud Scheduler to seed upcoming readings
+- Runs monthly on the 15th via Cloud Scheduler to seed next month's readings
 - Deploys automatically via GitHub Actions on push to `main`
 
 ## 🏗️ Architecture
@@ -25,11 +25,13 @@ GitHub Actions Workflow
     ↓
 Deploy Cloud Function (Gen2)
     ↓
-Create/Update Cloud Scheduler Job (Bi-weekly)
+Create/Update Cloud Scheduler Job (Monthly)
     ↓
-Bi-weekly Execution (Every 2 weeks)
+Monthly Execution (15th of each month)
     ↓
 Daily Readings Seeder
+    ↓
+Seeds days 1-30 of next month
     ↓
 Firebase Firestore (daily_scripture collection)
 ```
@@ -67,8 +69,9 @@ gcloud functions deploy daily-readings-seeder \
 ## ⏰ Schedule
 
 The function runs automatically:
-- **Bi-weekly** (1st and 15th of each month) at 2 AM Eastern Time (7 AM UTC)
-- Seeds readings for the next 14 days each run
+- **Monthly** on the 15th of each month at 2 AM Eastern Time (7 AM UTC)
+- Seeds readings for days 1-30 of the next month
+- Example: If run on November 15th, it seeds December 1-30
 
 ## 📊 Data Model
 
@@ -142,11 +145,8 @@ FUNCTION_URL=$(gcloud functions describe daily-readings-seeder \
   --region=us-central1 \
   --format="value(serviceConfig.uri)")
 
-# Invoke function (seeds 14 days by default)
+# Invoke function (seeds days 1-30 of next month)
 curl "$FUNCTION_URL"
-
-# Seed specific number of days
-curl "$FUNCTION_URL?days=30"
 ```
 
 ## 📝 Implementation Notes
@@ -190,8 +190,9 @@ curl "$FUNCTION_URL?days=30"
 ### Scheduler job not running
 
 - Verify job was created: `gcloud scheduler jobs list`
-- Check job status: `gcloud scheduler jobs describe daily-readings-seeder-biweekly`
+- Check job status: `gcloud scheduler jobs describe daily-readings-seeder-monthly-15th`
 - Review Cloud Scheduler logs in GCP Console
+- Job should run on the 15th of each month at 2 AM ET (7 AM UTC)
 
 ### Function execution errors
 

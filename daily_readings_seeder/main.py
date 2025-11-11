@@ -1,7 +1,7 @@
 """
 Firebase Daily Readings Seeder - Cloud Function
 This function seeds daily scripture readings with USCCB links and public domain text.
-Runs bi-weekly to seed upcoming readings.
+Runs monthly on the 15th to seed days 1-30 of the next month.
 """
 import os
 import json
@@ -337,7 +337,7 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
 def seed_daily_readings_cron(request):
     """
     Cloud Function entry point for seeding daily readings
-    Seeds readings for the next 14 days (bi-weekly)
+    Runs monthly on the 15th to seed days 1-30 of the next month
     
     Args:
         request: Flask request object (from Functions Framework)
@@ -353,27 +353,50 @@ def seed_daily_readings_cron(request):
         # Initialize Firebase
         initialize_firebase()
         
-        # Get parameters from request or defaults
-        days_to_seed = int(request.args.get('days', 14))  # Default 14 days (bi-weekly)
-        start_date = date.today()
+        # Get parameters from request or calculate next month's dates
+        today = date.today()
+        
+        # Calculate next month
+        if today.month == 12:
+            next_month = 1
+            next_year = today.year + 1
+        else:
+            next_month = today.month + 1
+            next_year = today.year
+        
+        # Start date is the 1st of next month
+        start_date = date(next_year, next_month, 1)
+        
+        # Seed days 1-30 of next month (handles months with 28-31 days)
+        # We'll seed up to 30 days, but the actual end depends on the month
+        days_to_seed = 30
         
         dry_run = os.environ.get('DRY_RUN', '').lower() == 'true'
         
         if dry_run:
             logger.info("🧪 Running in DRY RUN mode - no data will be saved to Firestore")
         
+        logger.info(f"📅 Seeding days 1-30 of next month: {start_date.strftime('%B %Y')}")
+        
         results = {
             'status': 'success',
             'start_date': start_date.isoformat(),
-            'days_seeded': days_to_seed,
+            'target_month': f"{next_year}-{next_month:02d}",
+            'days_to_seed': days_to_seed,
             'processed_dates': [],
             'successful': [],
             'errors': []
         }
         
-        # Seed readings for the specified number of days
+        # Seed readings for days 1-30 of next month
         for i in range(days_to_seed):
             target_date = start_date + timedelta(days=i)
+            
+            # Skip if we've gone past the end of the month (for months with < 30 days)
+            if target_date.month != next_month:
+                logger.info(f"⏭️  Skipping {target_date.strftime('%Y-%m-%d')} - past end of target month")
+                break
+            
             date_str = target_date.strftime('%Y-%m-%d')
             logger.info(f"📅 Processing date: {date_str}")
             
