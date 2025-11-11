@@ -2,19 +2,24 @@
 
 ## ⚠️ IMPORTANT: Read This First
 
-**Firebase Admin SDK service accounts have key creation disabled by organizational policy.**
+**Multiple organizational policies prevent automated setup:**
 
 **DO NOT TRY THESE - THEY WILL FAIL:**
-- ❌ `gcloud iam service-accounts keys create` - Will fail
+- ❌ `gcloud iam service-accounts keys create` - Blocked by `iam.disableServiceAccountKeyCreation`
 - ❌ Creating new service accounts - Admin SDK restriction applies
-- ❌ Any gcloud CLI key creation commands - Blocked by org policy
+- ❌ Cross-project IAM bindings - Blocked by `iam.allowedPolicyMemberDomains`
+- ❌ Any gcloud CLI key/permission commands - Blocked by org policies
 
 ```
 ERROR: Key creation is not allowed on this service account
-constraints/iam.disableServiceAccountKeyCreation
+ERROR: User not in permitted organization (cross-project access blocked)
 ```
 
-**This is a SECURITY RESTRICTION and cannot be bypassed via gcloud.**
+**These are SECURITY RESTRICTIONS enforced by your organization and cannot be bypassed via gcloud.**
+
+## ✅ ONLY Working Solution: Firebase Console
+
+**You MUST download the Firebase service account key from Firebase Console.**
 
 ## Solution Options
 
