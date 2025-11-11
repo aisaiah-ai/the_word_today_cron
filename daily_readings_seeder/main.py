@@ -263,73 +263,46 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
     # Get feast data
     feast = get_feast_for_date(target_date)
     
-    # Get public domain scripture text (use gospel reference)
+    # Get references from USCCB reading data
     gospel_ref = usccb_reading.get('gospel', {}).get('reference', 'John 3:16') if usccb_reading else 'John 3:16'
-    scripture_text = fetch_public_scripture_text(gospel_ref)
-    
-    # Get responsorial psalm reference and text
+    first_reading_ref = usccb_reading.get('reading1', {}).get('reference', '') if usccb_reading else ''
+    second_reading_ref = usccb_reading.get('reading2', {}).get('reference', '') if usccb_reading else ''
     psalm_ref = usccb_reading.get('responsorialPsalm', {}).get('reference', '') if usccb_reading else ''
-    psalm_text = ''
-    if psalm_ref and psalm_ref != 'TBD':
-        psalm_text = fetch_public_scripture_text(psalm_ref)
+    
+    # Get USCCB URL
+    usccb_url = generate_usccb_url(target_date) if usccb_reading else ''
+    
+    # Fetch public domain scripture text for each reading
+    gospel_text = fetch_public_scripture_text(gospel_ref)
+    first_reading_text = fetch_public_scripture_text(first_reading_ref) if first_reading_ref and first_reading_ref != 'TBD' else None
+    second_reading_text = fetch_public_scripture_text(second_reading_ref) if second_reading_ref and second_reading_ref != 'TBD' else None
+    psalm_text = fetch_public_scripture_text(psalm_ref) if psalm_ref and psalm_ref != 'TBD' else None
+    
+    if psalm_text:
         logger.info(f"📖 Fetched responsorial psalm text for {psalm_ref}")
     
-    # Construct daily scripture document
+    # Construct daily scripture document matching actual Firestore structure
     daily_scripture_data = {
         'id': doc_id,
         'title': 'Daily Scripture',
         'reference': gospel_ref,
-        'body': scripture_text,
+        'body': gospel_text,
+        'gospel': gospel_text,
+        'gospel_verse': gospel_ref,
+        'first_reading': first_reading_text,
+        'first_reading_verse': first_reading_ref if first_reading_ref else None,
+        'second_reading': second_reading_text,
+        'second_reading_verse': second_reading_ref if second_reading_ref else None,
+        'responsorial_psalm': psalm_text,
+        'responsorial_psalm_verse': psalm_ref if psalm_ref else None,
+        'usccb_link': usccb_url,
+        'feast': None,
         'updatedAt': firestore.SERVER_TIMESTAMP,
     }
     
-    # Add responsorial psalm text as a separate field
-    if psalm_text:
-        daily_scripture_data['responsorialPsalmText'] = psalm_text
-    
-    # Add USCCB reading data (references only, no full text)
-    if usccb_reading:
-        daily_scripture_data['usccbReading'] = {
-            'id': generate_id(),
-            'date': datetime.combine(target_date, datetime.min.time()),
-            'title': usccb_reading.get('title', ''),
-            'url': usccb_reading.get('url', ''),
-            'reading1': {
-                'id': generate_id(),
-                'title': usccb_reading.get('reading1', {}).get('title', 'Reading 1'),
-                'reference': usccb_reading.get('reading1', {}).get('reference', '')
-            },
-            'responsorialPsalm': {
-                'id': generate_id(),
-                'title': usccb_reading.get('responsorialPsalm', {}).get('title', 'Responsorial Psalm'),
-                'reference': usccb_reading.get('responsorialPsalm', {}).get('reference', ''),
-                'text': psalm_text if psalm_text else None
-            },
-            'gospel': {
-                'id': generate_id(),
-                'title': usccb_reading.get('gospel', {}).get('title', 'Gospel'),
-                'reference': usccb_reading.get('gospel', {}).get('reference', '')
-            }
-        }
-        
-        if 'reading2' in usccb_reading:
-            daily_scripture_data['usccbReading']['reading2'] = {
-                'id': generate_id(),
-                'title': usccb_reading['reading2'].get('title', 'Reading 2'),
-                'reference': usccb_reading['reading2'].get('reference', '')
-            }
-        
-        if 'alleluia' in usccb_reading:
-            daily_scripture_data['usccbReading']['alleluia'] = {
-                'id': generate_id(),
-                'title': usccb_reading['alleluia'].get('title', 'Alleluia'),
-                'reference': usccb_reading['alleluia'].get('reference', '')
-            }
-    
-    # Add feast data
+    # Add feast data if available
     if feast:
         daily_scripture_data['feast'] = feast.get('name')
-        daily_scripture_data['feastType'] = feast.get('type')
     
     if dry_run:
         logger.info(f"🧪 DRY RUN: Would seed document {doc_id}")
