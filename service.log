@@ -1,0 +1,37 @@
+Timestamp: Sat Nov  8 05:56:07 EST 2025
+----------------------------------------
+/Users/acthercop/.pyenv/versions/3.10.12/lib/python3.10/site-packages/google/api_core/_python_version_support.py:266: FutureWarning: You are using a Python version (3.10.12) which Google will stop supporting in new releases of google.api_core once it reaches its end of life (2026-10-04). Please upgrade to the latest Python version, or at least Python 3.11, to continue receiving updates for google.api_core past that date.
+  warnings.warn(message, FutureWarning)
+
+🔎 Fetching video for Saturday, November 8, 2025
+Request URL: https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=UC9gpFF4p56T4wQtinfAT3Eg&q=Today%27s%20Catholic%20Mass%20Readings%20%26%20Gospel%20Reflection%20Saturday%2C%20November%208%2C%202025&key=AIzaSyDx8mRf6ssB1bUYhhL6bRBYI31CMavs1_4&maxResults=5&type=video&order=date
+
+🔄 Updated 2025-11-08 with theWordTodayUrl → https://www.youtube.com/watch?v=MaxJZBWqAQA
+
+🔎 Fetching CFC video for 08 November 2025
+Request URL: https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=UCVb6g46-SKkTLTHTF-wO8Kw&q=08%20November%202025%20-%20Only%20By%20Grace%20Reflections&key=AIzaSyDx8mRf6ssB1bUYhhL6bRBYI31CMavs1_4&maxResults=5&type=video&order=date
+
+⚠️ No CFC Only By Grace Reflections video found for 08 November 2025
+
+🔎 Fetching Brother Bo FULLTANK SATURDAY video
+Request URL: https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=UCFoHFFBWDwxbpa1bYH736RA&q=FULLTANK%20SATURDAY&key=AIzaSyDx8mRf6ssB1bUYhhL6bRBYI31CMavs1_4&maxResults=5&type=video&order=date
+
+🔄 Updated 2025-11-08 with boSanchezFullTank → https://www.youtube.com/watch?v=M-e2GOYN550
+
+🔎 Fetching video for Sunday, November 9, 2025
+Request URL: https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=UC9gpFF4p56T4wQtinfAT3Eg&q=Today%27s%20Catholic%20Mass%20Readings%20%26%20Gospel%20Reflection%20Sunday%2C%20November%209%2C%202025&key=AIzaSyDx8mRf6ssB1bUYhhL6bRBYI31CMavs1_4&maxResults=5&type=video&order=date
+
+🔄 Updated 2025-11-09 with theWordTodayUrl → https://www.youtube.com/watch?v=G7P1WLAF-mc
+
+🔎 Fetching CFC video for 09 November 2025
+Request URL: https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=UCVb6g46-SKkTLTHTF-wO8Kw&q=09%20November%202025%20-%20Only%20By%20Grace%20Reflections&key=AIzaSyDx8mRf6ssB1bUYhhL6bRBYI31CMavs1_4&maxResults=5&type=video&order=date
+
+⚠️ No CFC Only By Grace Reflections video found for 09 November 2025
+
+🔎 Fetching Brother Bo FULLTANK SUNDAY video
+Request URL: https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=UCFoHFFBWDwxbpa1bYH736RA&q=FULLTANK%20SUNDAY&key=AIzaSyDx8mRf6ssB1bUYhhL6bRBYI31CMavs1_4&maxResults=5&type=video&order=date
+
+🔄 Updated 2025-11-09 with boSanchezFullTank → https://www.youtube.com/watch?v=aoq5cd46pxs
+----------------------------------------
+Exit code: 0 at Sat Nov  8 05:56:11 EST 2025
+

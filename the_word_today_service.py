@@ -100,18 +100,59 @@ def fetch_cfc_video_for_date(target_date: datetime.date):
     data = response.json()
 
     if "items" not in data or not data["items"]:
+        print(f"⚠️ No videos returned from API for query: {date_str} - Only By Grace Reflections")
         return None
 
+    print(f"📹 Found {len(data['items'])} video(s) in search results:")
+    for idx, item in enumerate(data["items"], 1):
+        title = item["snippet"]["title"]
+        video_id = item["id"]["videoId"]
+        print(f"   {idx}. {title}")
+        print(f"      Video ID: {video_id}")
+        print(f"      Date check: '{date_str}' in title? {date_str in title}")
+        print(f"      'Only By Grace Reflections' in title? {'Only By Grace Reflections' in title}")
+    
+    # Try multiple date formats and matching strategies
+    day_no_zero = str(target_date.day)  # "8" instead of "08"
+    date_formats = [
+        date_str,  # "08 November 2025"
+        target_date.strftime("%d %b %Y"),  # "08 Nov 2025" (abbreviated month)
+        f"{day_no_zero} {target_date.strftime('%B %Y')}",  # "8 November 2025" (no leading zero)
+        target_date.strftime("%d-%m-%Y"),  # "08-11-2025"
+        target_date.strftime("%Y-%m-%d"),  # "2025-11-08"
+    ]
+    
+    # First pass: Look for exact date match
     for item in data["items"]:
         title = item["snippet"]["title"]
-        if date_str in title and "Only By Grace Reflections" in title:
-            video_id = item["id"]["videoId"]
+        video_id = item["id"]["videoId"]
+        
+        # Check if it's an "Only By Grace Reflections" video
+        if "Only By Grace Reflections" in title or "Only By Grace" in title:
+            # Try matching with different date formats
+            for date_format in date_formats:
+                if date_format in title:
+                    print(f"✅ Matched video with exact date: {title}")
+                    return {
+                        "date": date_str,
+                        "title": title,
+                        "url": f"https://www.youtube.com/watch?v={video_id}"
+                    }
+    
+    # Second pass: If no exact match, return the first "Only By Grace" video (most recent)
+    for item in data["items"]:
+        title = item["snippet"]["title"]
+        video_id = item["id"]["videoId"]
+        
+        if "Only By Grace Reflections" in title or "Only By Grace" in title:
+            print(f"⚠️ No exact date match found, using most recent: {title}")
             return {
                 "date": date_str,
                 "title": title,
                 "url": f"https://www.youtube.com/watch?v={video_id}"
             }
 
+    print(f"⚠️ No matching CFC Only By Grace Reflections video found")
     return None
 
 
@@ -250,9 +291,9 @@ if __name__ == "__main__":
     
     today = datetime.date.today()
     tomorrow = today + datetime.timedelta(days=1)
-    # Hardcoded dates
-    # today = datetime.date(2025, 9, 21)  # September 23, 2025
-    # tomorrow = datetime.date(2025, 9, 22)  # September 24, 2025
+    # Hardcoded dates (uncomment to use specific dates)
+    # target_date = datetime.date(2025, 11, 7)
+    # for target in [target_date]:
 
     for target in [today, tomorrow]:
         # Fetch The Word Today video
