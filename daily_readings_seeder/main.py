@@ -574,12 +574,16 @@ def seed_daily_readings_cron(request):
             elif result['status'] == 'dry_run':
                 results['successful'].append(date_str)
                 logger.info(f"🧪 Dry run completed for {date_str}")
+            elif result['status'] == 'skipped':
+                # Skipped is okay - document doesn't exist or already has data
+                logger.info(f"⏭️  Skipped {date_str}: {result.get('reason', 'Unknown reason')}")
             else:
+                error_msg = result.get('error', result.get('reason', 'Unknown error'))
                 results['errors'].append({
                     'date': date_str,
-                    'error': result.get('error', 'Unknown error')
+                    'error': error_msg
                 })
-                logger.error(f"❌ Failed to seed {date_str}: {result.get('error')}")
+                logger.error(f"❌ Failed to seed {date_str}: {error_msg}")
             
             results['processed_dates'].append(date_str)
         
