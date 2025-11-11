@@ -448,60 +448,20 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
     # Get USCCB URL
     usccb_url = generate_usccb_url(target_date) if usccb_reading else ''
     
-    # Helper function to check if text is placeholder
-    def is_placeholder_text(text):
-        if not text:
-            return True
-        return text.startswith('[Public domain scripture text for') or text.startswith('[Public domain')
-    
-    # Fetch and update fields if missing OR if they contain placeholder text
+    # ONLY add responsorial psalm fields, preserve ALL other existing data
     update_data = {}
     
-    # Fetch and update first_reading if missing or has placeholder
-    first_reading_exists = existing_data.get('first_reading')
-    if (not first_reading_exists or is_placeholder_text(first_reading_exists)) and first_reading_ref and first_reading_ref != 'TBD':
-        first_reading_text = fetch_public_scripture_text(first_reading_ref)
-        if first_reading_text:
-            update_data['first_reading'] = first_reading_text
-            update_data['first_reading_verse'] = first_reading_ref
-            logger.info(f"📖 {'Updating' if first_reading_exists else 'Adding'} first reading: {first_reading_ref}")
-    
-    # Fetch and update gospel if missing or has placeholder
-    gospel_exists = existing_data.get('gospel')
-    if (not gospel_exists or is_placeholder_text(gospel_exists)) and gospel_ref:
-        gospel_text = fetch_public_scripture_text(gospel_ref)
-        if gospel_text:
-            update_data['gospel'] = gospel_text
-            update_data['gospel_verse'] = gospel_ref
-            update_data['body'] = gospel_text  # body field also contains gospel
-            update_data['reference'] = gospel_ref
-            logger.info(f"📖 {'Updating' if gospel_exists else 'Adding'} gospel: {gospel_ref}")
-    
-    # Fetch and update second_reading if missing or has placeholder
-    second_reading_exists = existing_data.get('second_reading')
-    if (not second_reading_exists or is_placeholder_text(second_reading_exists)) and second_reading_ref and second_reading_ref != 'TBD':
-        second_reading_text = fetch_public_scripture_text(second_reading_ref)
-        if second_reading_text:
-            update_data['second_reading'] = second_reading_text
-            update_data['second_reading_verse'] = second_reading_ref
-            logger.info(f"📖 {'Updating' if second_reading_exists else 'Adding'} second reading: {second_reading_ref}")
-    
-    # Fetch and update responsorial psalm if missing or has placeholder
+    # Fetch and update responsorial psalm ONLY if missing or empty
     psalm_exists = existing_data.get('responsorial_psalm')
-    if (not psalm_exists or is_placeholder_text(psalm_exists)) and psalm_ref and psalm_ref != 'TBD':
+    psalm_verse_exists = existing_data.get('responsorial_psalm_verse')
+    
+    # Only add responsorial psalm if both fields are missing or null
+    if not psalm_exists and not psalm_verse_exists and psalm_ref and psalm_ref != 'TBD':
         psalm_text = fetch_public_scripture_text(psalm_ref)
         if psalm_text:
             update_data['responsorial_psalm'] = psalm_text
             update_data['responsorial_psalm_verse'] = psalm_ref
-            logger.info(f"📖 {'Updating' if psalm_exists else 'Adding'} responsorial psalm: {psalm_ref}")
-    
-    # Only update usccb_link if missing
-    if not existing_data.get('usccb_link') and usccb_url:
-        update_data['usccb_link'] = usccb_url
-    
-    # Only update feast if missing
-    if not existing_data.get('feast') and feast:
-        update_data['feast'] = feast.get('name')
+            logger.info(f"📖 Adding responsorial psalm: {psalm_ref}")
     
     # Update timestamp
     update_data['updatedAt'] = firestore.SERVER_TIMESTAMP
