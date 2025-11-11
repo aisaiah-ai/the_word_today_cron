@@ -12,7 +12,9 @@ This function:
 - Seeds daily scripture readings for days 1-30 of the next month
 - Fetches USCCB reading references (NOT full text - licensing compliance)
 - Fetches public domain scripture text (World English Bible, KJV, etc.)
+- Extracts responsorial psalm verse, text, and response/refrain
 - Links liturgical feast information
+- Automatically deletes readings older than 2 months (cleanup)
 - Runs monthly on the 15th via Cloud Scheduler to seed next month's readings
 - Deploys automatically via GitHub Actions on push to `main`
 
@@ -72,6 +74,8 @@ The function runs automatically:
 - **Monthly** on the 15th of each month at 2 AM Eastern Time (7 AM UTC)
 - Seeds readings for days 1-30 of the next month
 - Example: If run on November 15th, it seeds December 1-30
+- Cleans up readings older than 2 months (keeps last 2 months only)
+- Example: If run in November, deletes all readings before September 1
 
 ## 📊 Data Model
 
@@ -81,34 +85,23 @@ The function runs automatically:
 {
   "id": "2025-11-05",
   "title": "Daily Scripture",
-  "reference": "Mk 3:22-30",
-  "body": "[Public domain scripture text for Gospel]",
-  "responsorialPsalmText": "[Public domain scripture text for Responsorial Psalm]",
-  "updatedAt": "2025-11-05T10:00:00Z",
-  "usccbReading": {
-    "id": "unique-id",
-    "date": "2025-11-05T00:00:00Z",
-    "title": "Readings for Wednesday, November 5, 2025",
-    "url": "https://bible.usccb.org/bible/readings/11/05/2025.cfm",
-    "reading1": {
-      "id": "unique-id",
-      "title": "Reading 1",
-      "reference": "Heb 9:15, 24-28"
-    },
-    "responsorialPsalm": {
-      "id": "unique-id",
-      "title": "Responsorial Psalm",
-      "reference": "Ps 98:1, 2-3ab",
-      "text": "[Public domain scripture text for Responsorial Psalm]"
-    },
-    "gospel": {
-      "id": "unique-id",
-      "title": "Gospel",
-      "reference": "Mk 3:22-30"
-    }
-  },
-  "feast": "Optional Memorial",
-  "feastType": "Optional Memorial"
+  "reference": "John 3:16",
+  "body": "[Gospel text]",
+  "gospel": "[Gospel text]",
+  "gospel_verse": "John 3:16",
+  "first_reading": "[First reading text or null]",
+  "first_reading_verse": "[Reference or null]",
+  "second_reading": "[Second reading text or null]",
+  "second_reading_verse": "[Reference or null]",
+  "responsorial_psalm": "[Psalm text from bible-api.com]",
+  "responsorial_psalm_verse": "Psalm 112:1b-2, 4-5, 9",
+  "responsorial_psalm_response": "Blessed the man who is gracious and lends to those in need.",
+  "usccb_link": "https://bible.usccb.org/bible/readings/110525.cfm",
+  "theWordTodayUrl": "[Video URL]",
+  "cfcOnlyByGraceReflectionsUrl": "[Video URL]",
+  "boSanchezFullTank": "[Video URL]",
+  "feast": null,
+  "updatedAt": "2025-11-05T10:00:00Z"
 }
 ```
 
