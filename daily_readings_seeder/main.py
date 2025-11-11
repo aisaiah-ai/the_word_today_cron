@@ -500,10 +500,74 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
         return {'status': 'error', 'doc_id': doc_id, 'error': str(e)}
 
 
+def delete_old_readings(cutoff_date: date, dry_run: bool = False) -> Dict:
+    """
+    Delete readings older than the cutoff date
+    
+    Args:
+        cutoff_date: Delete all documents before this date
+        dry_run: If True, don't actually delete
+    
+    Returns:
+        Dict with deletion results
+    """
+    if not _firebase_initialized:
+        initialize_firebase()
+    
+    logger.info(f"🗑️  Deleting readings older than {cutoff_date}")
+    
+    deleted_count = 0
+    errors = []
+    
+    try:
+        # Query for documents before cutoff date
+        # Document IDs are in format YYYY-MM-DD, so we can use string comparison
+        cutoff_id = cutoff_date.strftime("%Y-%m-%d")
+        
+        # Get all documents
+        docs = _db.collection('daily_scripture').stream()
+        
+        for doc in docs:
+            doc_id = doc.id
+            
+            # Skip if not in date format or if >= cutoff
+            if not re.match(r'\d{4}-\d{2}-\d{2}', doc_id):
+                continue
+            
+            if doc_id < cutoff_id:
+                if dry_run:
+                    logger.info(f"🧪 DRY RUN: Would delete {doc_id}")
+                    deleted_count += 1
+                else:
+                    try:
+                        _db.collection('daily_scripture').document(doc_id).delete()
+                        logger.info(f"🗑️  Deleted {doc_id}")
+                        deleted_count += 1
+                    except Exception as e:
+                        logger.error(f"❌ Error deleting {doc_id}: {str(e)}")
+                        errors.append({'doc_id': doc_id, 'error': str(e)})
+        
+        logger.info(f"✅ Deleted {deleted_count} old documents")
+        return {
+            'status': 'success',
+            'deleted_count': deleted_count,
+            'errors': errors
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error during cleanup: {str(e)}")
+        return {
+            'status': 'error',
+            'deleted_count': deleted_count,
+            'errors': [{'error': str(e)}]
+        }
+
+
 def seed_daily_readings_cron(request):
     """
     Cloud Function entry point for seeding daily readings
     Runs monthly on the 15th to seed days 1-30 of the next month
+    Also cleans up readings older than 2 months
     
     Args:
         request: Flask request object (from Functions Framework)
@@ -518,6 +582,23 @@ def seed_daily_readings_cron(request):
         
         # Initialize Firebase
         initialize_firebase()
+        
+        # Clean up old readings (older than 2 months)
+        today = date.today()
+        # Calculate 2 months prior
+        if today.month <= 2:
+            cutoff_month = today.month + 10  # Go back to previous year
+            cutoff_year = today.year - 1
+        else:
+            cutoff_month = today.month - 2
+            cutoff_year = today.year
+        
+        cutoff_date = date(cutoff_year, cutoff_month, 1)
+        
+        dry_run = os.environ.get('DRY_RUN', '').lower() == 'true'
+        
+        logger.info(f"🗑️  Cleaning up readings older than {cutoff_date}")
+        cleanup_result = delete_old_readings(cutoff_date, dry_run)
         
         # Get parameters from request or calculate next month's dates
         today = date.today()
@@ -587,7 +668,12 @@ def seed_daily_readings_cron(request):
             'days_to_seed': days_to_seed,
             'processed_dates': [],
             'successful': [],
-            'errors': []
+            'errors': [],
+            'cleanup': {
+                'cutoff_date': cutoff_date.isoformat(),
+                'deleted_count': cleanup_result.get('deleted_count', 0),
+                'errors': cleanup_result.get('errors', [])
+            }
         }
         
         # Seed readings for the specified date range
