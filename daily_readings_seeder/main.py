@@ -263,6 +263,11 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
     # Get feast data
     feast = get_feast_for_date(target_date)
     
+    # Check if document already exists
+    doc_ref = _db.collection('daily_scripture').document(doc_id)
+    existing_doc = doc_ref.get()
+    existing_data = existing_doc.to_dict() if existing_doc.exists else {}
+    
     # Get references from USCCB reading data
     gospel_ref = usccb_reading.get('gospel', {}).get('reference', 'John 3:16') if usccb_reading else 'John 3:16'
     first_reading_ref = usccb_reading.get('reading1', {}).get('reference', '') if usccb_reading else ''
@@ -272,46 +277,43 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
     # Get USCCB URL
     usccb_url = generate_usccb_url(target_date) if usccb_reading else ''
     
-    # Fetch public domain scripture text for each reading
-    gospel_text = fetch_public_scripture_text(gospel_ref)
-    first_reading_text = fetch_public_scripture_text(first_reading_ref) if first_reading_ref and first_reading_ref != 'TBD' else None
-    second_reading_text = fetch_public_scripture_text(second_reading_ref) if second_reading_ref and second_reading_ref != 'TBD' else None
-    psalm_text = fetch_public_scripture_text(psalm_ref) if psalm_ref and psalm_ref != 'TBD' else None
+    # Only fetch text if field is missing or empty in existing document
+    # Don't overwrite existing real text with placeholder text
+    update_data = {}
     
-    if psalm_text:
-        logger.info(f"📖 Fetched responsorial psalm text for {psalm_ref}")
+    # Only update fields that are missing or add responsorial psalm fields
+    if not existing_data.get('responsorial_psalm_verse') and psalm_ref:
+        psalm_text = fetch_public_scripture_text(psalm_ref) if psalm_ref and psalm_ref != 'TBD' else None
+        if psalm_text:
+            update_data['responsorial_psalm'] = psalm_text
+            update_data['responsorial_psalm_verse'] = psalm_ref
+            logger.info(f"📖 Adding responsorial psalm: {psalm_ref}")
     
-    # Construct daily scripture document matching actual Firestore structure
-    daily_scripture_data = {
-        'id': doc_id,
-        'title': 'Daily Scripture',
-        'reference': gospel_ref,
-        'body': gospel_text,
-        'gospel': gospel_text,
-        'gospel_verse': gospel_ref,
-        'first_reading': first_reading_text,
-        'first_reading_verse': first_reading_ref if first_reading_ref else None,
-        'second_reading': second_reading_text,
-        'second_reading_verse': second_reading_ref if second_reading_ref else None,
-        'responsorial_psalm': psalm_text,
-        'responsorial_psalm_verse': psalm_ref if psalm_ref else None,
-        'usccb_link': usccb_url,
-        'feast': None,
-        'updatedAt': firestore.SERVER_TIMESTAMP,
-    }
+    # Only update usccb_link if missing
+    if not existing_data.get('usccb_link') and usccb_url:
+        update_data['usccb_link'] = usccb_url
     
-    # Add feast data if available
-    if feast:
-        daily_scripture_data['feast'] = feast.get('name')
+    # Only update feast if missing
+    if not existing_data.get('feast') and feast:
+        update_data['feast'] = feast.get('name')
     
+    # Update timestamp
+    update_data['updatedAt'] = firestore.SERVER_TIMESTAMP
+    
+    # Preserve existing fields - don't overwrite them
     if dry_run:
-        logger.info(f"🧪 DRY RUN: Would seed document {doc_id}")
-        logger.info(f"   Data: {json.dumps(daily_scripture_data, indent=2, default=str)}")
+        logger.info(f"🧪 DRY RUN: Would update document {doc_id}")
+        logger.info(f"   Existing fields preserved: {list(existing_data.keys())}")
+        logger.info(f"   Fields to add/update: {list(update_data.keys())}")
         return {'status': 'dry_run', 'doc_id': doc_id}
     
     try:
-        doc_ref = _db.collection('daily_scripture').document(doc_id)
-        doc_ref.set(daily_scripture_data, merge=True)
+        # Only update if there are fields to add
+        if update_data:
+            doc_ref.set(update_data, merge=True)
+            logger.info(f"✅ Updated document {doc_id} with new fields: {list(update_data.keys())}")
+        else:
+            logger.info(f"⏭️  Document {doc_id} already has all fields, skipping update")
         logger.info(f"✅ Seeded daily reading for {doc_id}")
         return {'status': 'success', 'doc_id': doc_id}
     except Exception as e:
