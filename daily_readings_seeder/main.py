@@ -368,44 +368,85 @@ def seed_daily_readings_cron(request):
         # Get parameters from request or calculate next month's dates
         today = date.today()
         
-        # Calculate next month
-        if today.month == 12:
-            next_month = 1
-            next_year = today.year + 1
+        # Check if custom date range is provided via query parameters
+        start_date_param = request.args.get('start_date')
+        end_date_param = request.args.get('end_date')
+        
+        if start_date_param:
+            # Parse custom start date
+            try:
+                start_date = datetime.strptime(start_date_param, '%Y-%m-%d').date()
+                logger.info(f"📅 Using custom start date: {start_date}")
+            except ValueError:
+                logger.error(f"❌ Invalid start_date format: {start_date_param}. Use YYYY-MM-DD")
+                return {
+                    'statusCode': 400,
+                    'body': {'status': 'error', 'message': 'Invalid start_date format. Use YYYY-MM-DD'}
+                }, 400
         else:
-            next_month = today.month + 1
-            next_year = today.year
+            # Calculate next month (default behavior)
+            if today.month == 12:
+                next_month = 1
+                next_year = today.year + 1
+            else:
+                next_month = today.month + 1
+                next_year = today.year
+            
+            # Start date is the 1st of next month
+            start_date = date(next_year, next_month, 1)
         
-        # Start date is the 1st of next month
-        start_date = date(next_year, next_month, 1)
-        
-        # Seed days 1-30 of next month (handles months with 28-31 days)
-        # We'll seed up to 30 days, but the actual end depends on the month
-        days_to_seed = 30
+        # Determine end date
+        if end_date_param:
+            try:
+                end_date = datetime.strptime(end_date_param, '%Y-%m-%d').date()
+                logger.info(f"📅 Using custom end date: {end_date}")
+                days_to_seed = (end_date - start_date).days + 1
+            except ValueError:
+                logger.error(f"❌ Invalid end_date format: {end_date_param}. Use YYYY-MM-DD")
+                return {
+                    'statusCode': 400,
+                    'body': {'status': 'error', 'message': 'Invalid end_date format. Use YYYY-MM-DD'}
+                }, 400
+        else:
+            # Default: Seed days 1-30 of the target month
+            target_month = start_date.month
+            target_year = start_date.year
+            days_to_seed = 30
         
         dry_run = os.environ.get('DRY_RUN', '').lower() == 'true'
         
         if dry_run:
             logger.info("🧪 Running in DRY RUN mode - no data will be saved to Firestore")
         
-        logger.info(f"📅 Seeding days 1-30 of next month: {start_date.strftime('%B %Y')}")
+        if start_date_param or end_date_param:
+            logger.info(f"📅 Seeding custom date range: {start_date} to {start_date + timedelta(days=days_to_seed-1)}")
+        else:
+            logger.info(f"📅 Seeding days 1-30 of next month: {start_date.strftime('%B %Y')}")
+        
+        target_month = start_date.month
+        target_year = start_date.year
         
         results = {
             'status': 'success',
             'start_date': start_date.isoformat(),
-            'target_month': f"{next_year}-{next_month:02d}",
+            'target_month': f"{target_year}-{target_month:02d}",
             'days_to_seed': days_to_seed,
             'processed_dates': [],
             'successful': [],
             'errors': []
         }
         
-        # Seed readings for days 1-30 of next month
+        # Seed readings for the specified date range
         for i in range(days_to_seed):
             target_date = start_date + timedelta(days=i)
             
-            # Skip if we've gone past the end of the month (for months with < 30 days)
-            if target_date.month != next_month:
+            # Skip if we've gone past the end date (when using custom range)
+            if end_date_param and target_date > end_date:
+                logger.info(f"⏭️  Skipping {target_date.strftime('%Y-%m-%d')} - past end date")
+                break
+            
+            # Skip if we've gone past the end of the month (for default behavior with months < 30 days)
+            if not end_date_param and target_date.month != target_month:
                 logger.info(f"⏭️  Skipping {target_date.strftime('%Y-%m-%d')} - past end of target month")
                 break
             
