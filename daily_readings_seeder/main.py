@@ -447,16 +447,6 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
         'updatedAt': firestore.SERVER_TIMESTAMP
     }
     
-    # Add psalm text if missing
-    if not has_psalm:
-        psalm_text = fetch_public_scripture_text(psalm_ref)
-        if not psalm_text:
-            logger.warning(f"⚠️  Could not fetch text for {psalm_ref} - may be Deuterocanonical or unsupported format")
-            # Skip gracefully if we can't get the text
-            return {'status': 'skipped', 'doc_id': doc_id, 'reason': f'Could not fetch text for {psalm_ref}'}
-        update_data['responsorial_psalm'] = psalm_text
-        logger.info(f"📖 Adding responsorial psalm text: {psalm_ref}")
-    
     # Add psalm verse if missing
     if not has_psalm_verse:
         update_data['responsorial_psalm_verse'] = psalm_ref
@@ -466,6 +456,19 @@ def seed_daily_reading(target_date: date, dry_run: bool = False) -> Dict:
     if not has_psalm_response and psalm_response:
         update_data['responsorial_psalm_response'] = psalm_response
         logger.info(f"📖 Adding responsorial psalm response: {psalm_response}")
+    
+    # Add psalm text if missing (try to fetch, but don't fail if unavailable)
+    if not has_psalm:
+        psalm_text = fetch_public_scripture_text(psalm_ref)
+        if psalm_text:
+            update_data['responsorial_psalm'] = psalm_text
+            logger.info(f"📖 Adding responsorial psalm text: {psalm_ref}")
+        else:
+            # For Deuterocanonical texts not available in public domain APIs
+            # Still save verse and response, but leave text empty or with note
+            logger.warning(f"⚠️  Could not fetch text for {psalm_ref} - Deuterocanonical or unsupported format")
+            update_data['responsorial_psalm'] = f"[Text not available - see {psalm_ref} at USCCB]"
+            logger.info(f"📝 Added placeholder note for Deuterocanonical text: {psalm_ref}")
     
     # Preserve existing fields - don't overwrite them
     if dry_run:
