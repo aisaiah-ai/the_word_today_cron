@@ -35,10 +35,11 @@ jobs:
           cd daily_readings_seeder
           pip install -r requirements.txt
 
-      - name: 🔐 Authenticate to Google Cloud (Secondary Project)
+      - name: 🔐 Authenticate to Google Cloud (Secondary Project) - Workload Identity
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY_SECONDARY }}
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER_SECONDARY }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT_SECONDARY }}
 
       - name: ⚙️ Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
