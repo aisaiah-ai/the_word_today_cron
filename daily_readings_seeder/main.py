@@ -656,7 +656,7 @@ def seed_daily_readings_cron(request):
         
         # Check if secondary Firebase should be used
         # Secondary is enabled if credentials are provided OR if project ID is specified
-        secondary_project_id = os.environ.get('FIREBASE_PROJECT_ID_SECONDARY')
+        secondary_project_id = os.environ.get('FIREBASE_PROJECT_ID_SECONDARY') or os.environ.get('GCP_PROJECT_ID_SECONDARY')
         has_secondary_creds = (
             os.environ.get('FIREBASE_CREDENTIALS_JSON_SECONDARY') or
             os.environ.get('FIREBASE_CREDENTIALS_JSON_B64_SECONDARY') or
@@ -664,6 +664,7 @@ def seed_daily_readings_cron(request):
         )
         
         # Try to initialize secondary Firebase if credentials provided OR if project ID specified
+        # When running in secondary project, project ID is enough (uses ADC)
         has_secondary = False
         if has_secondary_creds or secondary_project_id:
             try:
@@ -672,7 +673,7 @@ def seed_daily_readings_cron(request):
                 if has_secondary_creds:
                     logger.info("✅ Secondary Firebase credentials detected - will seed both projects")
                 else:
-                    logger.info("✅ Secondary Firebase initialized using Application Default Credentials - will seed both projects")
+                    logger.info(f"✅ Secondary Firebase initialized using Application Default Credentials (project: {secondary_project_id}) - will seed secondary project")
             except Exception as e:
                 logger.warning(f"⚠️ Secondary Firebase initialization failed (will continue with primary only): {str(e)}")
                 has_secondary = False
