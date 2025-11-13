@@ -52,10 +52,12 @@ jobs:
         run: |
           echo "🎯 Deploying to secondary Firebase project: ${{ secrets.GCP_PROJECT_ID_SECONDARY }}"
           echo "ℹ️  This function will use Application Default Credentials"
-          echo "ℹ️  No Firebase service account keys needed - runs in same project as Firebase"
+          echo "ℹ️  No Firebase service account keys needed - uses Workload Identity Federation"
+          echo "ℹ️  Function runs in same GCP project as Firebase, so ADC works automatically"
           
           # Deploy WITHOUT Firebase credentials - uses Application Default Credentials
           # The Cloud Function runs in the same GCP project as the Firebase database
+          # Set project ID so function knows which Firebase project to use
           gcloud functions deploy ${{ env.FUNCTION_NAME }} \
             --gen2 \
             --runtime=${{ env.RUNTIME }} \
@@ -67,7 +69,7 @@ jobs:
             --memory=512MB \
             --timeout=540s \
             --max-instances=10 \
-            --set-env-vars="DRY_RUN=${DRY_RUN}" \
+            --set-env-vars="DRY_RUN=${DRY_RUN},FIREBASE_PROJECT_ID_SECONDARY=${{ secrets.GCP_PROJECT_ID_SECONDARY }}" \
             --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
 
       - name: 🔗 Get Function URL

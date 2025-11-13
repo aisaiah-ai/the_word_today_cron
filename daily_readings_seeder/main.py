@@ -112,17 +112,29 @@ def initialize_firebase(project='primary'):
             
             # If no credentials provided, use Application Default Credentials
             if cred is None:
-                logger.info("ℹ️ No secondary Firebase credentials found, using Application Default Credentials")
-                cred = credentials.ApplicationDefault()
+                # Get project ID from environment or use default
+                project_id = os.environ.get('FIREBASE_PROJECT_ID_SECONDARY') or os.environ.get('GCP_PROJECT_ID_SECONDARY')
+                if project_id:
+                    logger.info(f"ℹ️ No secondary Firebase credentials found, using Application Default Credentials for project: {project_id}")
+                    # Use Application Default Credentials with explicit project ID
+                    cred = credentials.ApplicationDefault()
+                else:
+                    logger.info("ℹ️ No secondary Firebase credentials found, using Application Default Credentials")
+                    cred = credentials.ApplicationDefault()
             
             # Initialize secondary Firebase app
             try:
                 app = firebase_admin.get_app('secondary')
             except ValueError:
-                firebase_admin.initialize_app(cred, name='secondary')
+                # Get project ID for initialization
+                project_id = os.environ.get('FIREBASE_PROJECT_ID_SECONDARY') or os.environ.get('GCP_PROJECT_ID_SECONDARY')
+                if project_id:
+                    firebase_admin.initialize_app(cred, name='secondary', options={'projectId': project_id})
+                else:
+                    firebase_admin.initialize_app(cred, name='secondary')
             
             _db_secondary = firestore.client(app=firebase_admin.get_app('secondary'))
-            logger.info("✅ Secondary Firebase initialized")
+            logger.info("✅ Secondary Firebase initialized using Application Default Credentials")
             return _db_secondary
             
         except Exception as e:
