@@ -86,25 +86,48 @@ jobs:
       - name: ⏰ Create/Update Monthly Scheduler Job (15th of Month)
         run: |
           JOB_NAME="${FUNCTION_NAME}-monthly-15th"
-          # Run on 15th of each month at 2 AM ET (7 AM UTC)
-          # Seeds days 1-30 of the next month
-          gcloud scheduler jobs create http "$JOB_NAME" \
+          FUNCTION_URL="${{ steps.get-url.outputs.url }}"
+          
+          echo "Creating/updating scheduler job: $JOB_NAME"
+          echo "Function URL: $FUNCTION_URL"
+          echo "Schedule: 0 7 15 * * (15th of month at 2 AM ET / 7 AM UTC)"
+          
+          # Check if job exists
+          if gcloud scheduler jobs describe "$JOB_NAME" \
             --location=${{ env.REGION }} \
-            --schedule="0 7 15 * *" \
-            --uri="${{ steps.get-url.outputs.url }}" \
-            --http-method=GET \
-            --time-zone="America/New_York" \
-            --description="Monthly seeding of daily readings on 15th - seeds days 1-30 of next month (SECONDARY)" \
-            --attempt-deadline=600s \
             --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
-            || gcloud scheduler jobs update http "$JOB_NAME" \
+            >/dev/null 2>&1; then
+            echo "Job exists, updating..."
+            gcloud scheduler jobs update http "$JOB_NAME" \
+              --location=${{ env.REGION }} \
+              --schedule="0 7 15 * *" \
+              --uri="$FUNCTION_URL" \
+              --http-method=GET \
+              --time-zone="America/New_York" \
+              --attempt-deadline=600s \
+              --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
+            echo "✅ Scheduler job updated successfully"
+          else
+            echo "Job does not exist, creating..."
+            gcloud scheduler jobs create http "$JOB_NAME" \
+              --location=${{ env.REGION }} \
+              --schedule="0 7 15 * *" \
+              --uri="$FUNCTION_URL" \
+              --http-method=GET \
+              --time-zone="America/New_York" \
+              --description="Monthly seeding of daily readings on 15th - seeds days 1-30 of next month (SECONDARY)" \
+              --attempt-deadline=600s \
+              --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
+            echo "✅ Scheduler job created successfully"
+          fi
+          
+          # Verify job was created/updated
+          echo ""
+          echo "Verifying scheduler job..."
+          gcloud scheduler jobs describe "$JOB_NAME" \
             --location=${{ env.REGION }} \
-            --schedule="0 7 15 * *" \
-            --uri="${{ steps.get-url.outputs.url }}" \
-            --http-method=GET \
-            --time-zone="America/New_York" \
-            --attempt-deadline=600s \
-            --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
+            --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
+            --format="table(name,schedule,timeZone,state,httpTarget.uri)"
 
       - name: ✅ Verify Deployment
         run: |
