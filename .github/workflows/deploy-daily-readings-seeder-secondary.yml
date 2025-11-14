@@ -115,44 +115,60 @@ jobs:
           echo "Function URL: $FUNCTION_URL"
           echo "Schedule: 0 7 15 * * (15th of month at 2 AM ET / 7 AM UTC)"
           
-          # Use App Engine default service account for OIDC (doesn't require actAs permission)
-          # This service account is automatically available and can be used for OIDC
+          # Use compute service account for OIDC (always exists, doesn't require actAs)
           PROJECT_NUMBER=$(gcloud projects describe ${{ secrets.GCP_PROJECT_ID_SECONDARY }} --format="value(projectNumber)")
-          APP_ENGINE_SA="${PROJECT_NUMBER}@appspot.gserviceaccount.com"
+          COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
           
-          echo "Using App Engine default service account for OIDC: $APP_ENGINE_SA"
+          echo "Using compute service account for OIDC: $COMPUTE_SA"
           
-          # Grant App Engine service account permission to invoke the function
-          echo "Granting invoke permission to App Engine service account..."
+          # Grant compute service account permission to invoke the function
+          echo "Granting invoke permission to compute service account..."
           SERVICE_NAME="${{ env.FUNCTION_NAME }}"
           if gcloud run services add-iam-policy-binding "$SERVICE_NAME" \
             --region=${{ env.REGION }} \
-            --member="serviceAccount:${APP_ENGINE_SA}" \
+            --member="serviceAccount:${COMPUTE_SA}" \
             --role="roles/run.invoker" \
             --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
             2>&1; then
-            echo "✅ Granted invoke permission to App Engine service account"
+            echo "✅ Granted invoke permission to compute service account"
           else
             echo "⚠️ Could not grant permission automatically (may need manual grant)"
           fi
           
-          # Check if job exists
+          # Check if job exists (with better error handling)
+          JOB_EXISTS=false
           if gcloud scheduler jobs describe "$JOB_NAME" \
             --location=${{ env.REGION }} \
             --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
             >/dev/null 2>&1; then
+            JOB_EXISTS=true
+          fi
+          
+          if [ "$JOB_EXISTS" = true ]; then
             echo "Job exists, updating..."
-            gcloud scheduler jobs update http "$JOB_NAME" \
+            if gcloud scheduler jobs update http "$JOB_NAME" \
               --location=${{ env.REGION }} \
               --schedule="0 7 15 * *" \
               --uri="$FUNCTION_URL" \
               --http-method=GET \
               --time-zone="America/New_York" \
               --attempt-deadline=600s \
-              --oidc-service-account-email="${APP_ENGINE_SA}" \
-              --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
-            echo "✅ Scheduler job updated successfully"
-          else
+              --oidc-service-account-email="${COMPUTE_SA}" \
+              --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
+              2>&1; then
+              echo "✅ Scheduler job updated successfully"
+            else
+              echo "⚠️ Update failed, trying to create instead..."
+              # Delete and recreate if update fails
+              gcloud scheduler jobs delete "$JOB_NAME" \
+                --location=${{ env.REGION }} \
+                --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
+                --quiet 2>&1 || true
+              JOB_EXISTS=false
+            fi
+          fi
+          
+          if [ "$JOB_EXISTS" = false ]; then
             echo "Job does not exist, creating..."
             gcloud scheduler jobs create http "$JOB_NAME" \
               --location=${{ env.REGION }} \
@@ -162,7 +178,7 @@ jobs:
               --time-zone="America/New_York" \
               --description="Monthly seeding of daily readings on 15th - seeds days 1-30 of next month (SECONDARY)" \
               --attempt-deadline=600s \
-              --oidc-service-account-email="${APP_ENGINE_SA}" \
+              --oidc-service-account-email="${COMPUTE_SA}" \
               --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
             echo "✅ Scheduler job created successfully"
           fi

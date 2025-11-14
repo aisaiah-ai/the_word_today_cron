@@ -114,27 +114,27 @@ jobs:
           echo "url=$FUNCTION_URL" >> $GITHUB_OUTPUT
           echo "✅ Function URL: $FUNCTION_URL"
 
-      - name: 🔐 Grant App Engine Service Account Invoke Permission
+      - name: 🔐 Grant Compute Service Account Invoke Permission
         run: |
-          # Use App Engine default service account for OIDC (doesn't require actAs permission)
+          # Use compute service account for OIDC (always exists, doesn't require actAs)
           PROJECT_NUMBER=$(gcloud projects describe ${{ secrets.GCP_PROJECT_ID_SECONDARY }} --format="value(projectNumber)")
-          APP_ENGINE_SA="${PROJECT_NUMBER}@appspot.gserviceaccount.com"
+          COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
           
-          echo "Granting invoke permission to App Engine service account: $APP_ENGINE_SA"
+          echo "Granting invoke permission to compute service account: $COMPUTE_SA"
           SERVICE_NAME="${{ env.FUNCTION_NAME }}"
           if gcloud run services add-iam-policy-binding "$SERVICE_NAME" \
             --region=${{ env.REGION }} \
-            --member="serviceAccount:${APP_ENGINE_SA}" \
+            --member="serviceAccount:${COMPUTE_SA}" \
             --role="roles/run.invoker" \
             --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
             2>&1; then
-            echo "✅ Granted invoke permission to App Engine service account"
+            echo "✅ Granted invoke permission to compute service account"
           else
             echo "⚠️ Could not grant permission automatically (may need manual grant)"
           fi
           
-          # Store App Engine SA for use in subsequent steps
-          echo "SCHEDULER_SA=${APP_ENGINE_SA}" >> $GITHUB_ENV
+          # Store compute SA for use in subsequent steps
+          echo "SCHEDULER_SA=${COMPUTE_SA}" >> $GITHUB_ENV
 
       - name: ⏰ Create/Update 4 AM ET (09:00 UTC) Scheduler Job
         run: |
@@ -143,12 +143,17 @@ jobs:
           
           echo "Creating/updating scheduler job: $JOB_NAME"
           
+          JOB_EXISTS=false
           if gcloud scheduler jobs describe "$JOB_NAME" \
             --location=${{ env.REGION }} \
             --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
             >/dev/null 2>&1; then
+            JOB_EXISTS=true
+          fi
+          
+          if [ "$JOB_EXISTS" = true ]; then
             echo "Job exists, updating..."
-            gcloud scheduler jobs update http "$JOB_NAME" \
+            if gcloud scheduler jobs update http "$JOB_NAME" \
               --location=${{ env.REGION }} \
               --schedule="0 9 * * *" \
               --uri="$FUNCTION_URL" \
@@ -156,9 +161,20 @@ jobs:
               --time-zone="America/New_York" \
               --attempt-deadline=600s \
               --oidc-service-account-email="${SCHEDULER_SA}" \
-              --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
-            echo "✅ Scheduler job updated successfully"
-          else
+              --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
+              2>&1; then
+              echo "✅ Scheduler job updated successfully"
+            else
+              echo "⚠️ Update failed, trying to create instead..."
+              gcloud scheduler jobs delete "$JOB_NAME" \
+                --location=${{ env.REGION }} \
+                --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
+                --quiet 2>&1 || true
+              JOB_EXISTS=false
+            fi
+          fi
+          
+          if [ "$JOB_EXISTS" = false ]; then
             echo "Job does not exist, creating..."
             gcloud scheduler jobs create http "$JOB_NAME" \
               --location=${{ env.REGION }} \
@@ -180,12 +196,17 @@ jobs:
           
           echo "Creating/updating scheduler job: $JOB_NAME"
           
+          JOB_EXISTS=false
           if gcloud scheduler jobs describe "$JOB_NAME" \
             --location=${{ env.REGION }} \
             --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
             >/dev/null 2>&1; then
+            JOB_EXISTS=true
+          fi
+          
+          if [ "$JOB_EXISTS" = true ]; then
             echo "Job exists, updating..."
-            gcloud scheduler jobs update http "$JOB_NAME" \
+            if gcloud scheduler jobs update http "$JOB_NAME" \
               --location=${{ env.REGION }} \
               --schedule="0 11 * * *" \
               --uri="$FUNCTION_URL" \
@@ -193,9 +214,20 @@ jobs:
               --time-zone="America/New_York" \
               --attempt-deadline=600s \
               --oidc-service-account-email="${SCHEDULER_SA}" \
-              --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
-            echo "✅ Scheduler job updated successfully"
-          else
+              --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
+              2>&1; then
+              echo "✅ Scheduler job updated successfully"
+            else
+              echo "⚠️ Update failed, trying to create instead..."
+              gcloud scheduler jobs delete "$JOB_NAME" \
+                --location=${{ env.REGION }} \
+                --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
+                --quiet 2>&1 || true
+              JOB_EXISTS=false
+            fi
+          fi
+          
+          if [ "$JOB_EXISTS" = false ]; then
             echo "Job does not exist, creating..."
             gcloud scheduler jobs create http "$JOB_NAME" \
               --location=${{ env.REGION }} \
@@ -217,12 +249,17 @@ jobs:
           
           echo "Creating/updating scheduler job: $JOB_NAME"
           
+          JOB_EXISTS=false
           if gcloud scheduler jobs describe "$JOB_NAME" \
             --location=${{ env.REGION }} \
             --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
             >/dev/null 2>&1; then
+            JOB_EXISTS=true
+          fi
+          
+          if [ "$JOB_EXISTS" = true ]; then
             echo "Job exists, updating..."
-            gcloud scheduler jobs update http "$JOB_NAME" \
+            if gcloud scheduler jobs update http "$JOB_NAME" \
               --location=${{ env.REGION }} \
               --schedule="0 14 * * *" \
               --uri="$FUNCTION_URL" \
@@ -230,9 +267,20 @@ jobs:
               --time-zone="America/New_York" \
               --attempt-deadline=600s \
               --oidc-service-account-email="${SCHEDULER_SA}" \
-              --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
-            echo "✅ Scheduler job updated successfully"
-          else
+              --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
+              2>&1; then
+              echo "✅ Scheduler job updated successfully"
+            else
+              echo "⚠️ Update failed, trying to create instead..."
+              gcloud scheduler jobs delete "$JOB_NAME" \
+                --location=${{ env.REGION }} \
+                --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
+                --quiet 2>&1 || true
+              JOB_EXISTS=false
+            fi
+          fi
+          
+          if [ "$JOB_EXISTS" = false ]; then
             echo "Job does not exist, creating..."
             gcloud scheduler jobs create http "$JOB_NAME" \
               --location=${{ env.REGION }} \
