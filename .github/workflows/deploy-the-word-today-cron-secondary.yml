@@ -114,27 +114,27 @@ jobs:
           echo "url=$FUNCTION_URL" >> $GITHUB_OUTPUT
           echo "✅ Function URL: $FUNCTION_URL"
 
-      - name: 🔐 Grant Cloud Scheduler Invoke Permission
+      - name: 🔐 Grant App Engine Service Account Invoke Permission
         run: |
-          # Get Cloud Scheduler service account
+          # Use App Engine default service account for OIDC (doesn't require actAs permission)
           PROJECT_NUMBER=$(gcloud projects describe ${{ secrets.GCP_PROJECT_ID_SECONDARY }} --format="value(projectNumber)")
-          SCHEDULER_SA="service-${PROJECT_NUMBER}@gcp-sa-cloudscheduler.iam.gserviceaccount.com"
+          APP_ENGINE_SA="${PROJECT_NUMBER}@appspot.gserviceaccount.com"
           
-          echo "Granting invoke permission to Cloud Scheduler service account: $SCHEDULER_SA"
+          echo "Granting invoke permission to App Engine service account: $APP_ENGINE_SA"
           SERVICE_NAME="${{ env.FUNCTION_NAME }}"
           if gcloud run services add-iam-policy-binding "$SERVICE_NAME" \
             --region=${{ env.REGION }} \
-            --member="serviceAccount:${SCHEDULER_SA}" \
+            --member="serviceAccount:${APP_ENGINE_SA}" \
             --role="roles/run.invoker" \
             --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
             2>&1; then
-            echo "✅ Granted invoke permission to Cloud Scheduler service account"
+            echo "✅ Granted invoke permission to App Engine service account"
           else
             echo "⚠️ Could not grant permission automatically (may need manual grant)"
           fi
           
-          # Store scheduler SA for use in subsequent steps
-          echo "SCHEDULER_SA=${SCHEDULER_SA}" >> $GITHUB_ENV
+          # Store App Engine SA for use in subsequent steps
+          echo "SCHEDULER_SA=${APP_ENGINE_SA}" >> $GITHUB_ENV
 
       - name: ⏰ Create/Update 4 AM ET (09:00 UTC) Scheduler Job
         run: |

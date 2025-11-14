@@ -115,23 +115,23 @@ jobs:
           echo "Function URL: $FUNCTION_URL"
           echo "Schedule: 0 7 15 * * (15th of month at 2 AM ET / 7 AM UTC)"
           
-          # Get Cloud Scheduler service account for authentication
-          # Cloud Scheduler uses a service account to invoke Cloud Run services
+          # Use App Engine default service account for OIDC (doesn't require actAs permission)
+          # This service account is automatically available and can be used for OIDC
           PROJECT_NUMBER=$(gcloud projects describe ${{ secrets.GCP_PROJECT_ID_SECONDARY }} --format="value(projectNumber)")
-          SCHEDULER_SA="service-${PROJECT_NUMBER}@gcp-sa-cloudscheduler.iam.gserviceaccount.com"
+          APP_ENGINE_SA="${PROJECT_NUMBER}@appspot.gserviceaccount.com"
           
-          echo "Using Cloud Scheduler service account: $SCHEDULER_SA"
+          echo "Using App Engine default service account for OIDC: $APP_ENGINE_SA"
           
-          # Grant scheduler service account permission to invoke the function
-          echo "Granting invoke permission to Cloud Scheduler service account..."
+          # Grant App Engine service account permission to invoke the function
+          echo "Granting invoke permission to App Engine service account..."
           SERVICE_NAME="${{ env.FUNCTION_NAME }}"
           if gcloud run services add-iam-policy-binding "$SERVICE_NAME" \
             --region=${{ env.REGION }} \
-            --member="serviceAccount:${SCHEDULER_SA}" \
+            --member="serviceAccount:${APP_ENGINE_SA}" \
             --role="roles/run.invoker" \
             --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
             2>&1; then
-            echo "✅ Granted invoke permission to Cloud Scheduler service account"
+            echo "✅ Granted invoke permission to App Engine service account"
           else
             echo "⚠️ Could not grant permission automatically (may need manual grant)"
           fi
@@ -149,7 +149,7 @@ jobs:
               --http-method=GET \
               --time-zone="America/New_York" \
               --attempt-deadline=600s \
-              --oidc-service-account-email="${SCHEDULER_SA}" \
+              --oidc-service-account-email="${APP_ENGINE_SA}" \
               --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
             echo "✅ Scheduler job updated successfully"
           else
@@ -162,7 +162,7 @@ jobs:
               --time-zone="America/New_York" \
               --description="Monthly seeding of daily readings on 15th - seeds days 1-30 of next month (SECONDARY)" \
               --attempt-deadline=600s \
-              --oidc-service-account-email="${SCHEDULER_SA}" \
+              --oidc-service-account-email="${APP_ENGINE_SA}" \
               --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
             echo "✅ Scheduler job created successfully"
           fi
