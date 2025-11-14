@@ -114,6 +114,28 @@ jobs:
           echo "url=$FUNCTION_URL" >> $GITHUB_OUTPUT
           echo "✅ Function URL: $FUNCTION_URL"
 
+      - name: 🔐 Grant Cloud Scheduler Invoke Permission
+        run: |
+          # Get Cloud Scheduler service account
+          PROJECT_NUMBER=$(gcloud projects describe ${{ secrets.GCP_PROJECT_ID_SECONDARY }} --format="value(projectNumber)")
+          SCHEDULER_SA="service-${PROJECT_NUMBER}@gcp-sa-cloudscheduler.iam.gserviceaccount.com"
+          
+          echo "Granting invoke permission to Cloud Scheduler service account: $SCHEDULER_SA"
+          SERVICE_NAME="${{ env.FUNCTION_NAME }}"
+          if gcloud run services add-iam-policy-binding "$SERVICE_NAME" \
+            --region=${{ env.REGION }} \
+            --member="serviceAccount:${SCHEDULER_SA}" \
+            --role="roles/run.invoker" \
+            --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
+            2>&1; then
+            echo "✅ Granted invoke permission to Cloud Scheduler service account"
+          else
+            echo "⚠️ Could not grant permission automatically (may need manual grant)"
+          fi
+          
+          # Store scheduler SA for use in subsequent steps
+          echo "SCHEDULER_SA=${SCHEDULER_SA}" >> $GITHUB_ENV
+
       - name: ⏰ Create/Update 4 AM ET (09:00 UTC) Scheduler Job
         run: |
           JOB_NAME="${FUNCTION_NAME}-4am-et"
@@ -133,6 +155,7 @@ jobs:
               --http-method=GET \
               --time-zone="America/New_York" \
               --attempt-deadline=600s \
+              --oidc-service-account-email="${SCHEDULER_SA}" \
               --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
             echo "✅ Scheduler job updated successfully"
           else
@@ -145,6 +168,7 @@ jobs:
               --time-zone="America/New_York" \
               --description="Daily run at 4 AM ET (09:00 UTC) for The Word Today service (SECONDARY)" \
               --attempt-deadline=600s \
+              --oidc-service-account-email="${SCHEDULER_SA}" \
               --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
             echo "✅ Scheduler job created successfully"
           fi
@@ -168,6 +192,7 @@ jobs:
               --http-method=GET \
               --time-zone="America/New_York" \
               --attempt-deadline=600s \
+              --oidc-service-account-email="${SCHEDULER_SA}" \
               --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
             echo "✅ Scheduler job updated successfully"
           else
@@ -180,6 +205,7 @@ jobs:
               --time-zone="America/New_York" \
               --description="Daily run at 6 AM ET (11:00 UTC) for The Word Today service (SECONDARY)" \
               --attempt-deadline=600s \
+              --oidc-service-account-email="${SCHEDULER_SA}" \
               --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
             echo "✅ Scheduler job created successfully"
           fi
@@ -203,6 +229,7 @@ jobs:
               --http-method=GET \
               --time-zone="America/New_York" \
               --attempt-deadline=600s \
+              --oidc-service-account-email="${SCHEDULER_SA}" \
               --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
             echo "✅ Scheduler job updated successfully"
           else
@@ -215,6 +242,7 @@ jobs:
               --time-zone="America/New_York" \
               --description="Daily run at 9 AM ET (14:00 UTC) for The Word Today service (SECONDARY)" \
               --attempt-deadline=600s \
+              --oidc-service-account-email="${SCHEDULER_SA}" \
               --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
             echo "✅ Scheduler job created successfully"
           fi
