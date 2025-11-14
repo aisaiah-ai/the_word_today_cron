@@ -82,16 +82,25 @@ jobs:
             --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
           
           # Grant invoke permission to allUsers AFTER deployment (using Cloud Run IAM)
-          # This avoids the org policy issue during deployment
+          # NOTE: This may fail due to org policy - if so, grant manually via console
           echo ""
-          echo "Granting invoke permission to allUsers via Cloud Run IAM..."
+          echo "Attempting to grant invoke permission to allUsers via Cloud Run IAM..."
+          echo "If this fails due to org policy, grant manually via console (see note below)"
           SERVICE_NAME="${{ env.FUNCTION_NAME }}"
-          gcloud run services add-iam-policy-binding "$SERVICE_NAME" \
+          if gcloud run services add-iam-policy-binding "$SERVICE_NAME" \
             --region=${{ env.REGION }} \
             --member="allUsers" \
             --role="roles/run.invoker" \
             --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
-            || echo "⚠️ Could not grant allUsers permission (may need manual grant via console)"
+            2>&1; then
+            echo "✅ Successfully granted allUsers permission"
+          else
+            echo "⚠️ Could not grant allUsers permission automatically (org policy restriction)"
+            echo "⚠️ Please grant manually via console:"
+            echo "   https://console.cloud.google.com/run/detail/${{ env.REGION }}/${{ env.FUNCTION_NAME }}?project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}"
+            echo "   Click 'PERMISSIONS' tab → 'ADD PRINCIPAL' → allUsers → roles/run.invoker"
+            echo "   Deployment will continue, but function won't be publicly accessible until permission is granted"
+          fi
 
       - name: 🔗 Get Function URL
         id: get-url
