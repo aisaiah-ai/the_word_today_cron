@@ -652,9 +652,20 @@ def seed_daily_readings_cron(request):
         logger.info(f"Timestamp: {datetime.now().isoformat()}")
         
         # Check if this is running in secondary project (secondary function deployment)
-        # If FIREBASE_PROJECT_ID_SECONDARY is set and matches current project, skip primary
+        # If FIREBASE_PROJECT_ID_SECONDARY is set, we're running as secondary function
         secondary_project_id = os.environ.get('FIREBASE_PROJECT_ID_SECONDARY') or os.environ.get('GCP_PROJECT_ID_SECONDARY')
         is_secondary_function = secondary_project_id is not None
+        
+        # Also check if we have primary credentials - if not, we're definitely secondary
+        has_primary_creds = (
+            os.environ.get('FIREBASE_CREDENTIALS_JSON') or
+            os.environ.get('FIREBASE_CREDENTIALS_JSON_B64') or
+            (os.environ.get('FIREBASE_CRED') and os.path.exists(os.environ.get('FIREBASE_CRED', '')))
+        )
+        
+        # If no primary credentials AND secondary project ID is set, we're secondary function
+        if not has_primary_creds and secondary_project_id:
+            is_secondary_function = True
         
         # Initialize Firebase based on deployment type
         has_primary = False
@@ -663,12 +674,14 @@ def seed_daily_readings_cron(request):
         if is_secondary_function:
             # This is the secondary function - only initialize secondary
             logger.info(f"🔵 Running as secondary function (project: {secondary_project_id})")
+            logger.info("🔵 No primary credentials found - this is definitely the secondary function")
             try:
                 initialize_firebase('secondary')
                 has_secondary = True
                 logger.info("✅ Secondary Firebase initialized using Application Default Credentials - will seed secondary project only")
             except Exception as e:
                 logger.error(f"❌ Secondary Firebase initialization failed: {str(e)}")
+                logger.error(f"❌ Error details: {type(e).__name__}: {str(e)}")
                 raise
         else:
             # This is the primary function - initialize primary, optionally secondary
@@ -863,8 +876,13 @@ def seed_daily_readings_cron(request):
             
             # Determine overall result based on which projects were seeded
             if is_secondary_function:
-                # For secondary function, use secondary result
-                result = result_secondary if result_secondary else {'status': 'error', 'error': 'No result'}
+                # For secondary function, use secondary result ONLY
+                if not result_secondary:
+                    logger.error(f"❌ No secondary result for {date_str} - this should not happen!")
+                    result = {'status': 'error', 'error': 'Secondary seeding returned no result'}
+                else:
+                    result = result_secondary
+                    logger.info(f"✅ Secondary seeding result for {date_str}: {result.get('status', 'unknown')}")
             elif has_primary and has_secondary:
                 # For primary function with both, consider it success if either succeeds
                 if result and result['status'] == 'success':
