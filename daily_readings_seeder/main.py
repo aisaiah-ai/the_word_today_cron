@@ -30,27 +30,27 @@ def _get_firebase_credentials(env_var_json, env_var_b64, env_var_path, app_name=
     Helper function to get Firebase credentials from various sources.
     Returns credentials object or None if not found.
     """
-    # Try to get credentials from environment variable (JSON string)
+        # Try to get credentials from environment variable (JSON string)
     firebase_creds_json = os.environ.get(env_var_json)
-    
-    # If not found, try base64 encoded version
-    if not firebase_creds_json:
+        
+        # If not found, try base64 encoded version
+        if not firebase_creds_json:
         firebase_creds_b64 = os.environ.get(env_var_b64)
-        if firebase_creds_b64:
-            firebase_creds_json = base64.b64decode(firebase_creds_b64).decode('utf-8')
+            if firebase_creds_b64:
+                firebase_creds_json = base64.b64decode(firebase_creds_b64).decode('utf-8')
             logger.info(f"✅ Decoded Firebase credentials from base64 for {app_name}")
-    
-    if firebase_creds_json:
-        # Parse JSON string
-        cred_dict = json.loads(firebase_creds_json)
-        cred = credentials.Certificate(cred_dict)
+        
+        if firebase_creds_json:
+            # Parse JSON string
+            cred_dict = json.loads(firebase_creds_json)
+            cred = credentials.Certificate(cred_dict)
         logger.info(f"✅ Initialized Firebase {app_name} from {env_var_json}")
         return cred
     
-    # Try to get from file path (for local development)
+            # Try to get from file path (for local development)
     firebase_cred_path = os.environ.get(env_var_path)
-    if firebase_cred_path and os.path.exists(firebase_cred_path):
-        cred = credentials.Certificate(firebase_cred_path)
+            if firebase_cred_path and os.path.exists(firebase_cred_path):
+                cred = credentials.Certificate(firebase_cred_path)
         logger.info(f"✅ Initialized Firebase {app_name} from file: {firebase_cred_path}")
         return cred
     
@@ -85,17 +85,17 @@ def initialize_firebase(project='primary'):
             # Initialize Firebase only if not already initialized
             try:
                 app = firebase_admin.get_app('primary')
-            except ValueError:
+        except ValueError:
                 firebase_admin.initialize_app(cred, name='primary')
-            
+        
             _db = firestore.client(app=firebase_admin.get_app('primary'))
-            _firebase_initialized = True
+        _firebase_initialized = True
             logger.info("✅ Primary Firebase initialized")
-            return _db
-            
-        except Exception as e:
+        return _db
+        
+    except Exception as e:
             logger.error(f"❌ Failed to initialize primary Firebase: {str(e)}")
-            raise
+        raise
     
     elif project == 'secondary':
         if _db_secondary is not None:
@@ -229,7 +229,7 @@ def fetch_usccb_reading_data(target_date: date) -> Optional[Dict]:
         url = url.replace('.cfm', '-Thanksgiving.cfm')
         logger.info(f"🦃 Using Thanksgiving URL: {url}")
     else:
-        logger.info(f"🔎 Fetching USCCB reading data from {url}")
+    logger.info(f"🔎 Fetching USCCB reading data from {url}")
     
     try:
         response = requests.get(url, timeout=30, headers={
@@ -491,16 +491,94 @@ def seed_daily_reading(target_date: date, dry_run: bool = False, project='primar
     db = initialize_firebase(project)
     
     doc_id = target_date.strftime("%Y-%m-%d")
-    logger.info(f"📅 Processing {doc_id} for responsorial psalm")
+    logger.info(f"📅 Processing {doc_id} for daily readings")
     
     # Check if document exists
     doc_ref = db.collection('daily_scripture').document(doc_id)
     existing_doc = doc_ref.get()
     
-    if not existing_doc.exists:
-        logger.warning(f"⚠️  Document {doc_id} does not exist - skipping")
-        return {'status': 'skipped', 'doc_id': doc_id, 'reason': 'document_not_found'}
+    # Fetch USCCB data first (needed for both creating and updating)
+    usccb_reading = fetch_usccb_reading_data(target_date)
+    if not usccb_reading:
+        logger.error(f"❌ Could not fetch USCCB data for {doc_id}")
+        return {'status': 'error', 'doc_id': doc_id, 'error': 'Could not fetch USCCB data'}
     
+    # If document doesn't exist, create it with all fields
+    if not existing_doc.exists:
+        logger.info(f"🆕 Document {doc_id} does not exist - creating new document with all readings")
+        
+        # Build complete document data
+        reading1_ref = usccb_reading.get('reading1', {}).get('reference', '')
+        reading2_ref = usccb_reading.get('reading2', {}).get('reference', '') if 'reading2' in usccb_reading else ''
+        gospel_ref = usccb_reading.get('gospel', {}).get('reference', '')
+        psalm_ref = usccb_reading.get('responsorialPsalm', {}).get('reference', '')
+        psalm_response = usccb_reading.get('responsorialPsalm', {}).get('response', '')
+        
+        # Fetch scripture text for readings
+        first_reading_text = fetch_public_scripture_text(reading1_ref) if reading1_ref else ''
+        second_reading_text = fetch_public_scripture_text(reading2_ref) if reading2_ref else ''
+        gospel_text = fetch_public_scripture_text(gospel_ref) if gospel_ref else ''
+        psalm_text = fetch_public_scripture_text(psalm_ref) if psalm_ref else ''
+        
+        # Build new document
+        new_doc_data = {
+        'id': doc_id,
+        'title': 'Daily Scripture',
+            'reference': gospel_ref or reading1_ref or '',
+            'usccb_link': usccb_reading.get('url', ''),
+        'updatedAt': firestore.SERVER_TIMESTAMP,
+            'createdAt': firestore.SERVER_TIMESTAMP
+        }
+        
+        # Add first reading
+        if reading1_ref:
+            new_doc_data['first_reading_verse'] = reading1_ref
+            if first_reading_text:
+                new_doc_data['first_reading'] = first_reading_text
+            else:
+                new_doc_data['first_reading'] = None
+        
+        # Add second reading (if present)
+        if reading2_ref:
+            new_doc_data['second_reading_verse'] = reading2_ref
+            if second_reading_text:
+                new_doc_data['second_reading'] = second_reading_text
+            else:
+                new_doc_data['second_reading'] = None
+        
+        # Add gospel
+        if gospel_ref:
+            new_doc_data['gospel_verse'] = gospel_ref
+            if gospel_text:
+                new_doc_data['gospel'] = gospel_text
+                new_doc_data['body'] = gospel_text  # Also set body to gospel for compatibility
+            else:
+                new_doc_data['gospel'] = None
+                new_doc_data['body'] = None
+        
+        # Add responsorial psalm
+        if psalm_ref:
+            new_doc_data['responsorial_psalm_verse'] = psalm_ref
+            if psalm_response:
+                new_doc_data['responsorial_psalm_response'] = psalm_response
+            if psalm_text:
+                new_doc_data['responsorial_psalm'] = psalm_text
+            else:
+                new_doc_data['responsorial_psalm'] = f"[Text not available - see {psalm_ref} at USCCB]"
+        
+        if dry_run:
+            logger.info(f"🧪 DRY RUN: Would create document {doc_id} with all readings")
+            return {'status': 'dry_run', 'doc_id': doc_id}
+        
+        try:
+            doc_ref.set(new_doc_data, merge=False)  # Create new document
+            logger.info(f"✅ Created new document {doc_id} with all daily readings")
+            return {'status': 'success', 'doc_id': doc_id}
+        except Exception as e:
+            logger.error(f"❌ Error creating document {doc_id}: {str(e)}")
+            return {'status': 'error', 'doc_id': doc_id, 'error': str(e)}
+    
+    # Document exists - update it with missing fields
     existing_data = existing_doc.to_dict()
     
     # Check if responsorial psalm and response already exist
