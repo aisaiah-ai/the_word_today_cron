@@ -30,27 +30,27 @@ def _get_firebase_credentials(env_var_json, env_var_b64, env_var_path, app_name=
     Helper function to get Firebase credentials from various sources.
     Returns credentials object or None if not found.
     """
-    # Try to get credentials from environment variable (JSON string)
+        # Try to get credentials from environment variable (JSON string)
     firebase_creds_json = os.environ.get(env_var_json)
-    
-    # If not found, try base64 encoded version
-    if not firebase_creds_json:
+        
+        # If not found, try base64 encoded version
+        if not firebase_creds_json:
         firebase_creds_b64 = os.environ.get(env_var_b64)
-        if firebase_creds_b64:
-            firebase_creds_json = base64.b64decode(firebase_creds_b64).decode('utf-8')
+            if firebase_creds_b64:
+                firebase_creds_json = base64.b64decode(firebase_creds_b64).decode('utf-8')
             logger.info(f"✅ Decoded Firebase credentials from base64 for {app_name}")
-    
-    if firebase_creds_json:
-        # Parse JSON string
-        cred_dict = json.loads(firebase_creds_json)
-        cred = credentials.Certificate(cred_dict)
+        
+        if firebase_creds_json:
+            # Parse JSON string
+            cred_dict = json.loads(firebase_creds_json)
+            cred = credentials.Certificate(cred_dict)
         logger.info(f"✅ Initialized Firebase {app_name} from {env_var_json}")
         return cred
     
-    # Try to get from file path (for local development)
+            # Try to get from file path (for local development)
     firebase_cred_path = os.environ.get(env_var_path)
-    if firebase_cred_path and os.path.exists(firebase_cred_path):
-        cred = credentials.Certificate(firebase_cred_path)
+            if firebase_cred_path and os.path.exists(firebase_cred_path):
+                cred = credentials.Certificate(firebase_cred_path)
         logger.info(f"✅ Initialized Firebase {app_name} from file: {firebase_cred_path}")
         return cred
     
@@ -85,17 +85,17 @@ def initialize_firebase(project='primary'):
             # Initialize Firebase only if not already initialized
             try:
                 app = firebase_admin.get_app('primary')
-            except ValueError:
+        except ValueError:
                 firebase_admin.initialize_app(cred, name='primary')
-            
+        
             _db = firestore.client(app=firebase_admin.get_app('primary'))
-            _firebase_initialized = True
+        _firebase_initialized = True
             logger.info("✅ Primary Firebase initialized")
-            return _db
-            
-        except Exception as e:
+        return _db
+        
+    except Exception as e:
             logger.error(f"❌ Failed to initialize primary Firebase: {str(e)}")
-            raise
+        raise
     
     elif project == 'secondary':
         if _db_secondary is not None:
@@ -229,7 +229,7 @@ def fetch_usccb_reading_data(target_date: date) -> Optional[Dict]:
         url = url.replace('.cfm', '-Thanksgiving.cfm')
         logger.info(f"🦃 Using Thanksgiving URL: {url}")
     else:
-        logger.info(f"🔎 Fetching USCCB reading data from {url}")
+    logger.info(f"🔎 Fetching USCCB reading data from {url}")
     
     try:
         response = requests.get(url, timeout=30, headers={
@@ -610,8 +610,28 @@ def seed_daily_reading(target_date: date, dry_run: bool = False, project='primar
             logger.error(f"❌ Error creating document {doc_id}: {str(e)}")
             return {'status': 'error', 'doc_id': doc_id, 'error': str(e)}
     
-    # Document exists - update it with missing fields
+    # Document exists - check if we need to update it
     existing_data = existing_doc.to_dict()
+    
+    # If USCCB data is unavailable, skip updating (document already exists)
+    if not usccb_reading:
+        logger.warning(f"⚠️  Document {doc_id} exists but USCCB data unavailable - skipping update")
+        return {'status': 'skipped', 'doc_id': doc_id, 'reason': 'usccb_unavailable'}
+    
+    # Check if document has incorrect/default data (e.g., all dates have same gospel)
+    # If gospel_verse is "John 3:16" and it's not November 13, likely incorrect data
+    existing_gospel_verse = existing_data.get('gospel_verse', '')
+    if existing_gospel_verse == 'John 3:16' and target_date.day != 13:
+        logger.warning(f"⚠️  Document {doc_id} has incorrect default data (John 3:16) - will overwrite")
+        # Delete and recreate the document with correct data
+        try:
+            doc_ref.delete()
+            logger.info(f"🗑️  Deleted incorrect document {doc_id}, will recreate")
+            # Recursively call to create new document
+            return seed_daily_reading(target_date, dry_run, project)
+        except Exception as e:
+            logger.error(f"❌ Error deleting incorrect document {doc_id}: {str(e)}")
+            return {'status': 'error', 'doc_id': doc_id, 'error': f'Failed to delete incorrect document: {str(e)}'}
     
     # Check if responsorial psalm and response already exist
     has_psalm = existing_data.get('responsorial_psalm')
@@ -622,9 +642,6 @@ def seed_daily_reading(target_date: date, dry_run: bool = False, project='primar
     if has_psalm and has_psalm_verse and has_psalm_response:
         logger.info(f"⏭️  Document {doc_id} already has complete responsorial psalm - skipping")
         return {'status': 'skipped', 'doc_id': doc_id, 'reason': 'already_exists'}
-    
-    # Try to get responsorial psalm reference and response from USCCB
-    usccb_reading = fetch_usccb_reading_data(target_date)
     psalm_ref = usccb_reading.get('responsorialPsalm', {}).get('reference', '') if usccb_reading else ''
     psalm_response = usccb_reading.get('responsorialPsalm', {}).get('response', '') if usccb_reading else ''
     
