@@ -66,8 +66,6 @@ jobs:
           echo "Will grant invoke permissions separately after deployment"
           
           # Deploy without --allow-unauthenticated to avoid IAM policy changes
-          # Use --ingress=internal to minimize IAM policy requirements
-          # This restricts access to internal GCP services only initially
           echo "Deploying function (this may take a few minutes)..."
           gcloud functions deploy ${{ env.FUNCTION_NAME }} \
             --gen2 \
@@ -77,30 +75,12 @@ jobs:
             --entry-point=${{ env.ENTRY_POINT }} \
             --trigger-http \
             --no-allow-unauthenticated \
-            --ingress=internal \
             --memory=512MB \
             --timeout=540s \
             --max-instances=10 \
             --service-account="$DEFAULT_SA" \
             --set-env-vars="DRY_RUN=${DRY_RUN},YOUTUBE_API_KEY=${YOUTUBE_API_KEY},FIREBASE_PROJECT_ID_SECONDARY=${{ secrets.GCP_PROJECT_ID_SECONDARY }}" \
-            --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
-            || {
-              echo "❌ Deployment failed - this is likely due to org policy IAM restrictions"
-              echo "The org policy blocks IAM policy changes required by Cloud Functions Gen2"
-              echo ""
-              echo "Alternative: Deploy manually using an account with org admin permissions"
-              echo "Or: Contact org admin to grant exception for Cloud Functions deployment"
-              exit 1
-            }
-          
-          # After successful deployment, change ingress to allow all
-          echo ""
-          echo "Updating ingress to allow all traffic..."
-          gcloud run services update ${{ env.FUNCTION_NAME }} \
-            --region=${{ env.REGION }} \
-            --ingress=all \
-            --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
-            || echo "⚠️ Could not update ingress (may need manual update)"
+            --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
           
           # Grant invoke permission to allUsers AFTER deployment (using Cloud Run IAM)
           # NOTE: This may fail due to org policy - if so, grant manually via console
