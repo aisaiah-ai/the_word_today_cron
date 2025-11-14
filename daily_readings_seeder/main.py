@@ -651,34 +651,55 @@ def seed_daily_readings_cron(request):
         logger.info(f"Request method: {request.method}")
         logger.info(f"Timestamp: {datetime.now().isoformat()}")
         
-        # Initialize Firebase (primary)
-        initialize_firebase('primary')
-        
-        # Check if secondary Firebase should be used
-        # Secondary is enabled if credentials are provided OR if project ID is specified
+        # Check if this is running in secondary project (secondary function deployment)
+        # If FIREBASE_PROJECT_ID_SECONDARY is set and matches current project, skip primary
         secondary_project_id = os.environ.get('FIREBASE_PROJECT_ID_SECONDARY') or os.environ.get('GCP_PROJECT_ID_SECONDARY')
-        has_secondary_creds = (
-            os.environ.get('FIREBASE_CREDENTIALS_JSON_SECONDARY') or
-            os.environ.get('FIREBASE_CREDENTIALS_JSON_B64_SECONDARY') or
-            (os.environ.get('FIREBASE_CRED_SECONDARY') and os.path.exists(os.environ.get('FIREBASE_CRED_SECONDARY', '')))
-        )
+        is_secondary_function = secondary_project_id is not None
         
-        # Try to initialize secondary Firebase if credentials provided OR if project ID specified
-        # When running in secondary project, project ID is enough (uses ADC)
+        # Initialize Firebase based on deployment type
+        has_primary = False
         has_secondary = False
-        if has_secondary_creds or secondary_project_id:
+        
+        if is_secondary_function:
+            # This is the secondary function - only initialize secondary
+            logger.info(f"🔵 Running as secondary function (project: {secondary_project_id})")
             try:
                 initialize_firebase('secondary')
                 has_secondary = True
-                if has_secondary_creds:
-                    logger.info("✅ Secondary Firebase credentials detected - will seed both projects")
-                else:
-                    logger.info(f"✅ Secondary Firebase initialized using Application Default Credentials (project: {secondary_project_id}) - will seed secondary project")
+                logger.info("✅ Secondary Firebase initialized using Application Default Credentials - will seed secondary project only")
             except Exception as e:
-                logger.warning(f"⚠️ Secondary Firebase initialization failed (will continue with primary only): {str(e)}")
-                has_secondary = False
+                logger.error(f"❌ Secondary Firebase initialization failed: {str(e)}")
+                raise
         else:
-            logger.info("ℹ️ No secondary Firebase configured - seeding primary project only")
+            # This is the primary function - initialize primary, optionally secondary
+            try:
+                initialize_firebase('primary')
+                has_primary = True
+                logger.info("✅ Primary Firebase initialized")
+            except Exception as e:
+                logger.error(f"❌ Primary Firebase initialization failed: {str(e)}")
+                raise
+            
+            # Check if secondary Firebase should also be used
+            has_secondary_creds = (
+                os.environ.get('FIREBASE_CREDENTIALS_JSON_SECONDARY') or
+                os.environ.get('FIREBASE_CREDENTIALS_JSON_B64_SECONDARY') or
+                (os.environ.get('FIREBASE_CRED_SECONDARY') and os.path.exists(os.environ.get('FIREBASE_CRED_SECONDARY', '')))
+            )
+            
+            if has_secondary_creds or secondary_project_id:
+                try:
+                    initialize_firebase('secondary')
+                    has_secondary = True
+                    if has_secondary_creds:
+                        logger.info("✅ Secondary Firebase credentials detected - will seed both projects")
+                    else:
+                        logger.info(f"✅ Secondary Firebase initialized using Application Default Credentials (project: {secondary_project_id}) - will seed both projects")
+                except Exception as e:
+                    logger.warning(f"⚠️ Secondary Firebase initialization failed (will continue with primary only): {str(e)}")
+                    has_secondary = False
+            else:
+                logger.info("ℹ️ No secondary Firebase configured - seeding primary project only")
         
         # Clean up old readings (older than 2 months)
         today = date.today()
@@ -694,12 +715,14 @@ def seed_daily_readings_cron(request):
         
         dry_run = os.environ.get('DRY_RUN', '').lower() == 'true'
         
-        # Clean up primary
-        logger.info(f"🗑️  Cleaning up readings older than {cutoff_date} from primary")
-        cleanup_result_primary = delete_old_readings(cutoff_date, dry_run, 'primary')
-        
-        # Clean up secondary if enabled
+        # Clean up old readings based on which projects are initialized
+        cleanup_result_primary = None
         cleanup_result_secondary = None
+        
+        if has_primary:
+            logger.info(f"🗑️  Cleaning up readings older than {cutoff_date} from primary")
+            cleanup_result_primary = delete_old_readings(cutoff_date, dry_run, 'primary')
+        
         if has_secondary:
             try:
                 logger.info(f"🗑️  Cleaning up readings older than {cutoff_date} from secondary")
@@ -769,6 +792,13 @@ def seed_daily_readings_cron(request):
         target_month = start_date.month
         target_year = start_date.year
         
+        # Build firebase_projects list based on what's initialized
+        firebase_projects = []
+        if has_primary:
+            firebase_projects.append('primary')
+        if has_secondary:
+            firebase_projects.append('secondary')
+        
         results = {
             'status': 'success',
             'start_date': start_date.isoformat(),
@@ -777,19 +807,21 @@ def seed_daily_readings_cron(request):
             'processed_dates': [],
             'successful': [],
             'errors': [],
-            'firebase_projects': ['primary'] + (['secondary'] if has_secondary else []),
-            'cleanup': {
-                'primary': {
-                    'cutoff_date': cutoff_date.isoformat(),
-                    'deleted_count': cleanup_result_primary.get('deleted_count', 0),
-                    'errors': cleanup_result_primary.get('errors', [])
-                }
-            }
+            'firebase_projects': firebase_projects,
+            'cleanup': {}
         }
         
-        # Add secondary cleanup results if applicable
+        # Add cleanup results for initialized projects
+        if has_primary and cleanup_result_primary:
+            results['cleanup']['primary'] = {
+                'cutoff_date': cutoff_date.isoformat(),
+                'deleted_count': cleanup_result_primary.get('deleted_count', 0),
+                'errors': cleanup_result_primary.get('errors', [])
+            }
+        
         if has_secondary and cleanup_result_secondary:
             results['cleanup']['secondary'] = {
+                'cutoff_date': cutoff_date.isoformat(),
                 'deleted_count': cleanup_result_secondary.get('deleted_count', 0),
                 'errors': cleanup_result_secondary.get('errors', [])
             }
@@ -811,29 +843,50 @@ def seed_daily_readings_cron(request):
             date_str = target_date.strftime('%Y-%m-%d')
             logger.info(f"📅 Processing date: {date_str}")
             
-            # Seed to primary Firebase
-            result = seed_daily_reading(target_date, dry_run, 'primary')
+            # Seed based on which projects are initialized
+            result = None
+            result_secondary = None
             
-            # Seed to secondary Firebase if enabled
-            if has_secondary and result['status'] == 'success':
+            if has_primary:
+                # Seed to primary Firebase
+                result = seed_daily_reading(target_date, dry_run, 'primary')
+            
+            if has_secondary:
+                # Seed to secondary Firebase
                 try:
                     result_secondary = seed_daily_reading(target_date, dry_run, 'secondary')
                     if result_secondary['status'] != 'success':
                         logger.warning(f"⚠️ Secondary seeding failed for {date_str}: {result_secondary.get('reason', 'Unknown')}")
                 except Exception as e:
                     logger.warning(f"⚠️ Secondary seeding failed for {date_str}: {str(e)}")
+                    result_secondary = {'status': 'error', 'error': str(e)}
             
-            if result['status'] == 'success':
+            # Determine overall result based on which projects were seeded
+            if is_secondary_function:
+                # For secondary function, use secondary result
+                result = result_secondary if result_secondary else {'status': 'error', 'error': 'No result'}
+            elif has_primary and has_secondary:
+                # For primary function with both, consider it success if either succeeds
+                if result and result['status'] == 'success':
+                    pass  # Use primary result
+                elif result_secondary and result_secondary['status'] == 'success':
+                    result = result_secondary  # Use secondary result if primary failed
+                elif result:
+                    pass  # Use primary result even if it failed
+                else:
+                    result = result_secondary if result_secondary else {'status': 'error', 'error': 'No result'}
+            
+            if result and result['status'] == 'success':
                 results['successful'].append(date_str)
                 logger.info(f"✅ Successfully seeded {date_str}")
-            elif result['status'] == 'dry_run':
+            elif result and result['status'] == 'dry_run':
                 results['successful'].append(date_str)
                 logger.info(f"🧪 Dry run completed for {date_str}")
-            elif result['status'] == 'skipped':
+            elif result and result['status'] == 'skipped':
                 # Skipped is okay - document doesn't exist or already has data
                 logger.info(f"⏭️  Skipped {date_str}: {result.get('reason', 'Unknown reason')}")
             else:
-                error_msg = result.get('error', result.get('reason', 'Unknown error'))
+                error_msg = result.get('error', result.get('reason', 'Unknown error')) if result else 'No result from seeding'
                 results['errors'].append({
                     'date': date_str,
                     'error': error_msg
