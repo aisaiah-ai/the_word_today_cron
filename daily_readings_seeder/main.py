@@ -499,12 +499,44 @@ def seed_daily_reading(target_date: date, dry_run: bool = False, project='primar
     
     # Fetch USCCB data first (needed for both creating and updating)
     usccb_reading = fetch_usccb_reading_data(target_date)
-    if not usccb_reading:
-        logger.error(f"❌ Could not fetch USCCB data for {doc_id}")
-        return {'status': 'error', 'doc_id': doc_id, 'error': 'Could not fetch USCCB data'}
     
     # If document doesn't exist, create it with all fields
     if not existing_doc.exists:
+        # If USCCB data is unavailable, create a minimal document
+        if not usccb_reading:
+            logger.warning(f"⚠️  Could not fetch USCCB data for {doc_id} - creating minimal document")
+            minimal_doc_data = {
+                'id': doc_id,
+                'title': 'Daily Scripture',
+                'reference': '',
+                'usccb_link': generate_usccb_url(target_date),
+                'updatedAt': firestore.SERVER_TIMESTAMP,
+                'createdAt': firestore.SERVER_TIMESTAMP,
+                'first_reading': None,
+                'first_reading_verse': None,
+                'second_reading': None,
+                'second_reading_verse': None,
+                'gospel': None,
+                'gospel_verse': None,
+                'body': None,
+                'responsorial_psalm': None,
+                'responsorial_psalm_verse': None,
+                'responsorial_psalm_response': None
+            }
+            
+            if dry_run:
+                logger.info(f"🧪 DRY RUN: Would create minimal document {doc_id} (USCCB data unavailable)")
+                return {'status': 'dry_run', 'doc_id': doc_id}
+            
+            try:
+                doc_ref.set(minimal_doc_data, merge=False)
+                logger.info(f"✅ Created minimal document {doc_id} (USCCB data unavailable)")
+                return {'status': 'success', 'doc_id': doc_id, 'note': 'Created with minimal data - USCCB unavailable'}
+            except Exception as e:
+                logger.error(f"❌ Error creating minimal document {doc_id}: {str(e)}")
+                return {'status': 'error', 'doc_id': doc_id, 'error': str(e)}
+        
+        # USCCB data is available - create full document
         logger.info(f"🆕 Document {doc_id} does not exist - creating new document with all readings")
         
         # Build complete document data
