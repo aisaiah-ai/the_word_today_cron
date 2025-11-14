@@ -229,7 +229,7 @@ def fetch_usccb_reading_data(target_date: date) -> Optional[Dict]:
         url = url.replace('.cfm', '-Thanksgiving.cfm')
         logger.info(f"🦃 Using Thanksgiving URL: {url}")
     else:
-    logger.info(f"🔎 Fetching USCCB reading data from {url}")
+        logger.info(f"🔎 Fetching USCCB reading data from {url}")
     
     try:
         response = requests.get(url, timeout=30, headers={
