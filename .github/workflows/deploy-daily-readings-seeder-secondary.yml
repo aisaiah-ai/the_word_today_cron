@@ -58,6 +58,12 @@ jobs:
           # Deploy WITHOUT Firebase credentials - uses Application Default Credentials
           # The Cloud Function runs in the same GCP project as the Firebase database
           # Set project ID so function knows which Firebase project to use
+          # Use default compute service account to avoid org policy IAM issues
+          PROJECT_NUMBER=$(gcloud projects describe ${{ secrets.GCP_PROJECT_ID_SECONDARY }} --format="value(projectNumber)")
+          DEFAULT_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+          
+          echo "Using default compute service account: $DEFAULT_SA"
+          
           gcloud functions deploy ${{ env.FUNCTION_NAME }} \
             --gen2 \
             --runtime=${{ env.RUNTIME }} \
@@ -69,6 +75,7 @@ jobs:
             --memory=512MB \
             --timeout=540s \
             --max-instances=10 \
+            --service-account="$DEFAULT_SA" \
             --set-env-vars="DRY_RUN=${DRY_RUN},FIREBASE_PROJECT_ID_SECONDARY=${{ secrets.GCP_PROJECT_ID_SECONDARY }}" \
             --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
 
