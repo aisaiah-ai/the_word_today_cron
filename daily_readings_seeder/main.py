@@ -642,6 +642,8 @@ def seed_daily_reading(target_date: date, dry_run: bool = False, project='primar
     if has_psalm and has_psalm_verse and has_psalm_response:
         logger.info(f"⏭️  Document {doc_id} already has complete responsorial psalm - skipping")
         return {'status': 'skipped', 'doc_id': doc_id, 'reason': 'already_exists'}
+    
+    # Get responsorial psalm reference and response from USCCB
     psalm_ref = usccb_reading.get('responsorialPsalm', {}).get('reference', '') if usccb_reading else ''
     psalm_response = usccb_reading.get('responsorialPsalm', {}).get('response', '') if usccb_reading else ''
     
