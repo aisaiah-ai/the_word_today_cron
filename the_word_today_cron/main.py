@@ -115,17 +115,29 @@ def initialize_firebase(project='primary'):
             
             # If no credentials provided, use Application Default Credentials
             if cred is None:
-                logger.info("ℹ️ No secondary Firebase credentials found, using Application Default Credentials")
-                cred = credentials.ApplicationDefault()
+                # Get project ID from environment or use default
+                project_id = os.environ.get('FIREBASE_PROJECT_ID_SECONDARY') or os.environ.get('GCP_PROJECT_ID_SECONDARY')
+                if project_id:
+                    logger.info(f"ℹ️ No secondary Firebase credentials found, using Application Default Credentials for project: {project_id}")
+                    # Use Application Default Credentials with explicit project ID
+                    cred = credentials.ApplicationDefault()
+                else:
+                    logger.info("ℹ️ No secondary Firebase credentials found, using Application Default Credentials")
+                    cred = credentials.ApplicationDefault()
             
             # Initialize secondary Firebase app
             try:
                 app = firebase_admin.get_app('secondary')
             except ValueError:
-                firebase_admin.initialize_app(cred, name='secondary')
+                # Get project ID for initialization
+                project_id = os.environ.get('FIREBASE_PROJECT_ID_SECONDARY') or os.environ.get('GCP_PROJECT_ID_SECONDARY')
+                if project_id:
+                    firebase_admin.initialize_app(cred, name='secondary', options={'projectId': project_id})
+                else:
+                    firebase_admin.initialize_app(cred, name='secondary')
             
             _db_secondary = firestore.client(app=firebase_admin.get_app('secondary'))
-            logger.info("✅ Secondary Firebase initialized")
+            logger.info("✅ Secondary Firebase initialized using Application Default Credentials")
             return _db_secondary
             
         except Exception as e:
@@ -427,7 +439,7 @@ def the_word_today_cron(request):
         
         # Initialize secondary Firebase if credentials are provided OR if using Application Default Credentials
         # Check if secondary project ID is specified (indicates we should try secondary)
-        secondary_project_id = os.environ.get('FIREBASE_PROJECT_ID_SECONDARY')
+        secondary_project_id = os.environ.get('FIREBASE_PROJECT_ID_SECONDARY') or os.environ.get('GCP_PROJECT_ID_SECONDARY')
         has_secondary_creds = (
             os.environ.get('FIREBASE_CREDENTIALS_JSON_SECONDARY') or
             os.environ.get('FIREBASE_CREDENTIALS_JSON_B64_SECONDARY') or
@@ -435,6 +447,7 @@ def the_word_today_cron(request):
         )
         
         # Try to initialize secondary Firebase if credentials provided OR if project ID specified
+        # When running in secondary project, project ID is enough (uses ADC)
         has_secondary = False
         if has_secondary_creds or secondary_project_id:
             try:
@@ -443,7 +456,7 @@ def the_word_today_cron(request):
                 if has_secondary_creds:
                     logger.info("✅ Secondary Firebase credentials detected - will write to both projects")
                 else:
-                    logger.info("✅ Secondary Firebase initialized using Application Default Credentials - will write to both projects")
+                    logger.info(f"✅ Secondary Firebase initialized using Application Default Credentials (project: {secondary_project_id}) - will write to secondary project")
             except Exception as e:
                 logger.warning(f"⚠️ Secondary Firebase initialization failed (will continue with primary only): {str(e)}")
                 has_secondary = False
