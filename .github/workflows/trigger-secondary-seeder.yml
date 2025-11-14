@@ -1,0 +1,79 @@
+name: Trigger Secondary Seeder (Workload Identity)
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'Start date (YYYY-MM-DD)'
+        required: true
+        default: '2025-11-01'
+      end_date:
+        description: 'End date (YYYY-MM-DD)'
+        required: true
+        default: '2025-11-30'
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: 🔐 Authenticate to Google Cloud (Secondary Project) - Workload Identity
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER_SECONDARY }}
+          service_account: ${{ secrets.SERVICE_ACCOUNT_SECONDARY }}
+
+      - name: ⚙️ Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID_SECONDARY }}
+
+      - name: 🚀 Trigger Secondary Seeder Function
+        run: |
+          FUNCTION_URL="https://daily-readings-seeder-secondary-n6patcgpoa-uc.a.run.app"
+          START_DATE="${{ inputs.start_date }}"
+          END_DATE="${{ inputs.end_date }}"
+          
+          echo "Triggering secondary seeder function..."
+          echo "Start date: $START_DATE"
+          echo "End date: $END_DATE"
+          echo "Function URL: $FUNCTION_URL"
+          
+          # Get compute service account for OIDC
+          PROJECT_NUMBER=$(gcloud projects describe ${{ secrets.GCP_PROJECT_ID_SECONDARY }} --format="value(projectNumber)")
+          COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+          
+          # Create a temporary scheduler job to trigger the function
+          JOB_NAME="trigger-seeder-$(date +%s)"
+          
+          echo "Creating temporary scheduler job: $JOB_NAME"
+          gcloud scheduler jobs create http "$JOB_NAME" \
+            --location=us-central1 \
+            --schedule="* * * * *" \
+            --uri="${FUNCTION_URL}?start_date=${START_DATE}&end_date=${END_DATE}" \
+            --http-method=GET \
+            --time-zone="America/New_York" \
+            --attempt-deadline=600s \
+            --oidc-service-account-email="${COMPUTE_SA}" \
+            --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
+          
+          echo "Running scheduler job..."
+          sleep 2
+          gcloud scheduler jobs run "$JOB_NAME" \
+            --location=us-central1 \
+            --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }}
+          
+          echo "Waiting for function execution..."
+          sleep 10
+          
+          echo "Cleaning up temporary scheduler job..."
+          gcloud scheduler jobs delete "$JOB_NAME" \
+            --location=us-central1 \
+            --project=${{ secrets.GCP_PROJECT_ID_SECONDARY }} \
+            --quiet || true
+          
+          echo "✅ Secondary seeder triggered successfully!"
+
