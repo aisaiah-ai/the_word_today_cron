@@ -85,17 +85,17 @@ def initialize_firebase(project='primary'):
             # Initialize Firebase only if not already initialized
             try:
                 app = firebase_admin.get_app('primary')
-        except ValueError:
+            except ValueError:
                 firebase_admin.initialize_app(cred, name='primary')
-        
+            
             _db = firestore.client(app=firebase_admin.get_app('primary'))
-        _firebase_initialized = True
+            _firebase_initialized = True
             logger.info("✅ Primary Firebase initialized")
-        return _db
-        
-    except Exception as e:
+            return _db
+            
+        except Exception as e:
             logger.error(f"❌ Failed to initialize primary Firebase: {str(e)}")
-        raise
+            raise
     
     elif project == 'secondary':
         if _db_secondary is not None:
