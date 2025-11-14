@@ -30,27 +30,27 @@ def _get_firebase_credentials(env_var_json, env_var_b64, env_var_path, app_name=
     Helper function to get Firebase credentials from various sources.
     Returns credentials object or None if not found.
     """
-        # Try to get credentials from environment variable (JSON string)
+    # Try to get credentials from environment variable (JSON string)
     firebase_creds_json = os.environ.get(env_var_json)
-        
-        # If not found, try base64 encoded version
-        if not firebase_creds_json:
+    
+    # If not found, try base64 encoded version
+    if not firebase_creds_json:
         firebase_creds_b64 = os.environ.get(env_var_b64)
-            if firebase_creds_b64:
-                firebase_creds_json = base64.b64decode(firebase_creds_b64).decode('utf-8')
+        if firebase_creds_b64:
+            firebase_creds_json = base64.b64decode(firebase_creds_b64).decode('utf-8')
             logger.info(f"✅ Decoded Firebase credentials from base64 for {app_name}")
-        
-        if firebase_creds_json:
-            # Parse JSON string
-            cred_dict = json.loads(firebase_creds_json)
-            cred = credentials.Certificate(cred_dict)
+    
+    if firebase_creds_json:
+        # Parse JSON string
+        cred_dict = json.loads(firebase_creds_json)
+        cred = credentials.Certificate(cred_dict)
         logger.info(f"✅ Initialized Firebase {app_name} from {env_var_json}")
         return cred
     
-            # Try to get from file path (for local development)
+    # Try to get from file path (for local development)
     firebase_cred_path = os.environ.get(env_var_path)
-            if firebase_cred_path and os.path.exists(firebase_cred_path):
-                cred = credentials.Certificate(firebase_cred_path)
+    if firebase_cred_path and os.path.exists(firebase_cred_path):
+        cred = credentials.Certificate(firebase_cred_path)
         logger.info(f"✅ Initialized Firebase {app_name} from file: {firebase_cred_path}")
         return cred
     
