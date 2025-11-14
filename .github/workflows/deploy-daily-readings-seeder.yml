@@ -89,6 +89,12 @@ jobs:
             echo "ℹ️ No secondary Firebase credentials provided - will only seed primary project"
           fi
           
+          # Add secondary project ID if provided (for Application Default Credentials)
+          if [ -n "${{ secrets.GCP_PROJECT_ID_SECONDARY }}" ]; then
+            echo "✅ Secondary project ID detected: ${{ secrets.GCP_PROJECT_ID_SECONDARY }}"
+            ENV_VARS="${ENV_VARS},FIREBASE_PROJECT_ID_SECONDARY=${{ secrets.GCP_PROJECT_ID_SECONDARY }},GCP_PROJECT_ID_SECONDARY=${{ secrets.GCP_PROJECT_ID_SECONDARY }}"
+          fi
+          
           # Deploy with base64 encoded credentials
           gcloud functions deploy ${{ env.FUNCTION_NAME }} \
             --gen2 \
