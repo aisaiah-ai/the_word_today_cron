@@ -583,10 +583,11 @@ def seed_daily_reading(target_date: date, dry_run: bool = False, project='primar
             new_doc_data['gospel_verse'] = gospel_ref
             if gospel_text:
                 new_doc_data['gospel'] = gospel_text
-                new_doc_data['body'] = gospel_text  # Also set body to gospel for compatibility
+                # Set body to just the gospel reference (one-liner)
+                new_doc_data['body'] = f"Gospel: {gospel_ref}"
             else:
                 new_doc_data['gospel'] = None
-                new_doc_data['body'] = None
+                new_doc_data['body'] = f"Gospel: {gospel_ref}"
         
         # Add responsorial psalm
         if psalm_ref:
